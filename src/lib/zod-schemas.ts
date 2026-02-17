@@ -3,14 +3,12 @@ import { z } from "zod";
 export const queryPlanSchema = z.object({
   query: z.string().min(5),
   fields_of_study: z.array(z.string()).min(1),
-  must_terms: z.array(z.string()).default([]),
-  must_not_terms: z.array(z.string()).default([]),
-  time_horizon: z
-    .object({
-      start_year: z.number().int().min(1900).max(2100).optional(),
-      end_year: z.number().int().min(1900).max(2100).optional()
-    })
-    .optional()
+  must_terms: z.array(z.string()),
+  must_not_terms: z.array(z.string()),
+  time_horizon: z.object({
+    start_year: z.number().int().min(1900).max(2100).nullable(),
+    end_year: z.number().int().min(1900).max(2100).nullable()
+  })
 });
 
 export const triageDecisionSchema = z.object({

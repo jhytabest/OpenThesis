@@ -1,8 +1,10 @@
 node_modules
 .wrangler
 .env
+.dev.vars
 coverage
 dist
+debug-runs
 *.db
 *.db-shm
 *.db-wal

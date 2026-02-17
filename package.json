@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "npm run d1:migrate:remote && wrangler deploy",
+    "debug:live": "tsx scripts/run-live-debug.ts",
+    "debug:live:all": "tsx scripts/run-live-debug.ts --all",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/**/*.test.ts",
     "verify": "npm run typecheck && npm test",

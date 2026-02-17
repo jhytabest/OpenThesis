@@ -14,11 +14,23 @@ import type {
   SeedSelection,
   TriageOutput
 } from "../lib/types.js";
+import type { ZodTypeAny } from "zod";
+
+const openAiStrictSchema = (schema: ZodTypeAny, name: string): Record<string, unknown> => {
+  const generated = zodToJsonSchema(schema, name) as {
+    definitions?: Record<string, unknown>;
+  };
+  const fromDefinitions = generated.definitions?.[name];
+  if (fromDefinitions && typeof fromDefinitions === "object") {
+    return fromDefinitions as Record<string, unknown>;
+  }
+  return generated as unknown as Record<string, unknown>;
+};
 
 const fetchJson = async <T>(
   url: string,
   options: RequestInit,
-  timeoutMs = 18_000
+  timeoutMs = 45_000
 ): Promise<T> => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -103,14 +115,20 @@ const mapOpenAlexWork = (
 
 const extractOutputText = (payload: {
   output_text?: string;
-  output?: Array<{ content?: Array<{ text?: string }> }>;
+  output?: Array<{ content?: Array<{ type?: string; text?: string }> }>;
 }): string => {
   if (typeof payload.output_text === "string" && payload.output_text.trim()) {
     return payload.output_text;
   }
-  const fallback = payload.output?.[0]?.content?.[0]?.text;
-  if (typeof fallback === "string" && fallback.trim()) {
-    return fallback;
+  for (const item of payload.output ?? []) {
+    for (const content of item.content ?? []) {
+      if (content.type !== "output_text") {
+        continue;
+      }
+      if (typeof content.text === "string" && content.text.trim()) {
+        return content.text;
+      }
+    }
   }
   throw new Error("OpenAI response did not return JSON text");
 };
@@ -132,7 +150,7 @@ const buildLiveReasoningProvider = (env: Env) => {
   }): Promise<T> => {
     const payload = await fetchJson<{
       output_text?: string;
-      output?: Array<{ content?: Array<{ text?: string }> }>;
+      output?: Array<{ content?: Array<{ type?: string; text?: string }> }>;
     }>(
       "https://api.openai.com/v1/responses",
       {
@@ -173,9 +191,9 @@ const buildLiveReasoningProvider = (env: Env) => {
     async generateQueryPlan(thesisText: string): Promise<QueryPlan> {
       return runStructuredPrompt({
         name: "query_plan",
-        schema: zodToJsonSchema(queryPlanSchema, "query_plan") as Record<string, unknown>,
+        schema: openAiStrictSchema(queryPlanSchema, "query_plan"),
         system:
-          "You generate one broad Semantic Scholar query plus fields-of-study constraints for a thesis. Return strict JSON.",
+          "You generate one broad Semantic Scholar query plus fields-of-study constraints for a thesis. Keep the query concise (about 8-18 terms), avoid long boolean chains, and return strict JSON.",
         user: `Thesis text:\n${thesisText}`,
         parse: (value) => queryPlanSchema.parse(value)
       });
@@ -187,7 +205,7 @@ const buildLiveReasoningProvider = (env: Env) => {
     ): Promise<TriageOutput> {
       return runStructuredPrompt({
         name: "triage_output",
-        schema: zodToJsonSchema(triageOutputSchema, "triage_output") as Record<string, unknown>,
+        schema: openAiStrictSchema(triageOutputSchema, "triage_output"),
         system:
           "You classify candidate papers for thesis relevance. Use on_topic, off_topic, or uncertain. Return strict JSON.",
         user: `Thesis text:\n${thesisText}\n\nCandidates:\n${JSON.stringify(candidates)}`,
@@ -202,7 +220,7 @@ const buildLiveReasoningProvider = (env: Env) => {
     ): Promise<SeedSelection> {
       return runStructuredPrompt({
         name: "seed_selection",
-        schema: zodToJsonSchema(seedSelectionSchema, "seed_selection") as Record<string, unknown>,
+        schema: openAiStrictSchema(seedSelectionSchema, "seed_selection"),
         system:
           "Select final seed papers for graph expansion with broad coverage and high thesis relevance. Return strict JSON.",
         user: `Thesis text:\n${thesisText}\n\nCandidates:\n${JSON.stringify(
@@ -242,6 +260,17 @@ const buildLiveSemanticScholarProvider = (env: Env) => {
     "authors"
   ].join(",");
 
+  const normalizeQuery = (value: string, maxTerms: number): string =>
+    value
+      .replace(/["()]/g, " ")
+      .replace(/\b(AND|OR|NOT)\b/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .split(" ")
+      .filter((term) => term.length > 1)
+      .slice(0, maxTerms)
+      .join(" ");
+
   const mapResponse = (payload: {
     data?: Array<{
       paperId?: string;
@@ -274,34 +303,60 @@ const buildLiveSemanticScholarProvider = (env: Env) => {
 
   return {
     async search(query: string, fieldsOfStudy: string[], limit: number): Promise<CandidatePaper[]> {
-      const url = new URL(`${baseUrl}/graph/v1/paper/search`);
-      url.searchParams.set("query", query);
-      url.searchParams.set("limit", String(limit));
-      url.searchParams.set("fields", fields);
-      if (fieldsOfStudy.length > 0) {
-        url.searchParams.set("fieldsOfStudy", fieldsOfStudy.join(","));
+      const executeSearch = async (
+        queryValue: string,
+        fieldsFilter: string[]
+      ): Promise<CandidatePaper[]> => {
+        const url = new URL(`${baseUrl}/graph/v1/paper/search`);
+        url.searchParams.set("query", queryValue);
+        url.searchParams.set("limit", String(limit));
+        url.searchParams.set("fields", fields);
+        if (fieldsFilter.length > 0) {
+          url.searchParams.set("fieldsOfStudy", fieldsFilter.join(","));
+        }
+
+        const payload = await fetchJson<{
+          data?: Array<{
+            paperId?: string;
+            title?: string;
+            abstract?: string;
+            year?: number;
+            citationCount?: number;
+            externalIds?: { DOI?: string };
+            fieldsOfStudy?: string[];
+            authors?: Array<{ authorId?: string; name?: string }>;
+          }>;
+        }>(
+          url.toString(),
+          {
+            method: "GET",
+            headers: withHeaders()
+          }
+        );
+        return mapResponse(payload);
+      };
+
+      const primaryQuery = normalizeQuery(query, 18);
+      const shortQuery = normalizeQuery(query, 10);
+      const searchQuery = primaryQuery || query;
+
+      const initial = await executeSearch(searchQuery, fieldsOfStudy);
+      if (initial.length > 0) {
+        return initial;
       }
 
-      const payload = await fetchJson<{
-        data?: Array<{
-          paperId?: string;
-          title?: string;
-          abstract?: string;
-          year?: number;
-          citationCount?: number;
-          externalIds?: { DOI?: string };
-          fieldsOfStudy?: string[];
-          authors?: Array<{ authorId?: string; name?: string }>;
-        }>;
-      }>(
-        url.toString(),
-        {
-          method: "GET",
-          headers: withHeaders()
+      if (fieldsOfStudy.length > 0) {
+        const withoutFieldFilter = await executeSearch(searchQuery, []);
+        if (withoutFieldFilter.length > 0) {
+          return withoutFieldFilter;
         }
-      );
+      }
 
-      return mapResponse(payload);
+      if (shortQuery && shortQuery !== searchQuery) {
+        return executeSearch(shortQuery, []);
+      }
+
+      return [];
     },
 
     async recommend(
@@ -345,6 +400,38 @@ const buildLiveSemanticScholarProvider = (env: Env) => {
 
 const buildLiveOpenAlexProvider = (env: Env) => {
   const baseUrl = "https://api.openalex.org";
+
+  const tokenizeTitle = (value: string): Set<string> =>
+    new Set(
+      value
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter((token) => token.length >= 4)
+    );
+
+  const isRelatedToSeed = (seed: CanonicalPaper, candidate: CanonicalPaper): boolean => {
+    const seedFields = new Set(seed.fieldsOfStudy.map((field) => field.toLowerCase()));
+    const candidateFields = new Set(candidate.fieldsOfStudy.map((field) => field.toLowerCase()));
+    for (const field of seedFields) {
+      if (candidateFields.has(field)) {
+        return true;
+      }
+    }
+
+    const seedTokens = tokenizeTitle(seed.title);
+    const candidateTokens = tokenizeTitle(candidate.title);
+    let overlap = 0;
+    for (const token of seedTokens) {
+      if (candidateTokens.has(token)) {
+        overlap += 1;
+      }
+      if (overlap >= 2) {
+        return true;
+      }
+    }
+    return false;
+  };
 
   const withAuth = (url: URL): URL => {
     if (env.OPENALEX_API_KEY) {
@@ -475,7 +562,11 @@ const buildLiveOpenAlexProvider = (env: Env) => {
           if (!ref?.id) {
             continue;
           }
-          papers.push(mapOpenAlexWork(ref));
+          const mapped = mapOpenAlexWork(ref);
+          if (!isRelatedToSeed(seed, mapped)) {
+            continue;
+          }
+          papers.push(mapped);
           edges.push({
             sourceOpenalexId: seed.openalexId,
             targetOpenalexId: ref.id,
@@ -490,7 +581,11 @@ const buildLiveOpenAlexProvider = (env: Env) => {
           if (!citedBy.id) {
             continue;
           }
-          papers.push(mapOpenAlexWork(citedBy));
+          const mapped = mapOpenAlexWork(citedBy);
+          if (!isRelatedToSeed(seed, mapped)) {
+            continue;
+          }
+          papers.push(mapped);
           edges.push({
             sourceOpenalexId: citedBy.id,
             targetOpenalexId: seed.openalexId,
@@ -507,7 +602,11 @@ const buildLiveOpenAlexProvider = (env: Env) => {
             if (!work.id || work.id === seed.openalexId) {
               continue;
             }
-            papers.push(mapOpenAlexWork(work));
+            const mapped = mapOpenAlexWork(work);
+            if (!isRelatedToSeed(seed, mapped)) {
+              continue;
+            }
+            papers.push(mapped);
             edges.push({
               sourceOpenalexId: seed.openalexId,
               targetOpenalexId: work.id,
@@ -526,7 +625,15 @@ const buildLiveOpenAlexProvider = (env: Env) => {
 
 const buildLiveUnpaywallProvider = (env: Env) => {
   if (!env.UNPAYWALL_EMAIL) {
-    throw new Error("UNPAYWALL_EMAIL is required in live mode");
+    return {
+      async lookupByDoi(): Promise<{
+        pdfUrl?: string;
+        oaStatus?: string;
+        license?: string;
+      } | null> {
+        return null;
+      }
+    };
   }
 
   return {

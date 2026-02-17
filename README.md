@@ -26,9 +26,11 @@ Production-oriented MVP for thesis-to-paper-graph using:
 - `src/index.ts`: worker fetch routes, queue consumer, workflow class export
 - `src/lib/db.ts`: D1 repository and ownership-safe queries
 - `src/lib/pipeline.ts`: end-to-end run pipeline
-- `src/providers/`: live + mock provider adapters
+- `src/providers/live.ts`: live provider adapters (OpenAI, Semantic Scholar, OpenAlex, Unpaywall)
 - `src/ui/index.ts`: app UI HTML
 - `migrations/0001_init.sql`: D1 schema
+- `fixtures/mock-theses.json`: reusable thesis fixtures for live testing
+- `scripts/run-live-debug.ts`: local live-debug harness with full API logs
 - `wrangler.jsonc`: Cloudflare bindings/config
 
 ## Local Setup
@@ -67,6 +69,27 @@ npm run d1:migrate:local
 ```bash
 npm run dev
 ```
+
+## Local Live Debug Loop
+
+Run the real external workflow locally (no mock provider) with thesis fixtures:
+
+```bash
+cp .env.example .env
+# fill OPENAI_API_KEY, SEMANTIC_SCHOLAR_API_KEY, OPENALEX_API_KEY (and optionally UNPAYWALL_EMAIL)
+npm run debug:live -- --list
+npm run debug:live -- --thesis-id business-ai-pricing
+npm run debug:live:all
+```
+
+Artifacts are written under `debug-runs/<timestamp>/<thesis-id>/`:
+
+- `thesis.json`: selected fixture text
+- `http.log.ndjson`: full outbound API requests and responses
+- `steps.json`: raw outputs per pipeline step
+- `result.json`: summary, scored papers, and enrichment
+
+The runner applies retries with adaptive backoff for transient failures and API rate limits.
 
 ## Deploy
 

@@ -1,6 +1,6 @@
 import { Db } from "./db.js";
 import { scorePaper } from "./scoring.js";
-import type { CanonicalPaper, Env, GraphEdge } from "./types.js";
+import type { CanonicalPaper, Env, GraphEdge, SeedSelection, TriageOutput } from "./types.js";
 import { buildProviders } from "../providers/index.js";
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -20,7 +20,9 @@ async function withRetries<T>(
         throw error;
       }
       onRetry(attempt, error);
-      await sleep(200 * attempt);
+      const message = error instanceof Error ? error.message : String(error);
+      const delayMs = message.includes("429") ? 5_000 * attempt : 500 * attempt;
+      await sleep(delayMs);
     }
   }
   throw new Error("unreachable");
@@ -38,6 +40,55 @@ const dedupeBy = <T>(items: T[], key: (item: T) => string): T[] => {
     output.push(item);
   }
   return output;
+};
+
+const STOP_WORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "that",
+  "this",
+  "from",
+  "into",
+  "over",
+  "under",
+  "between",
+  "across",
+  "using",
+  "uses",
+  "used",
+  "study",
+  "thesis",
+  "their",
+  "there",
+  "where",
+  "which",
+  "while",
+  "about",
+  "through",
+  "based",
+  "model",
+  "models"
+]);
+
+const buildFallbackQueryFromThesis = (text: string): string => {
+  const counts = new Map<string, number>();
+  for (const token of text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length >= 4)) {
+    if (STOP_WORDS.has(token)) {
+      continue;
+    }
+    counts.set(token, (counts.get(token) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .map(([token]) => token)
+    .join(" ");
 };
 
 async function runStep<T>(
@@ -102,7 +153,7 @@ export async function processRun(env: Env, runId: string): Promise<void> {
       detail: queryPlan
     });
 
-    const initialCandidates = await runStep(env, runId, "semantic_search", () =>
+    let initialCandidates = await runStep(env, runId, "semantic_search", () =>
       withRetries(
         () => providers.semanticScholar.search(queryPlan.query, queryPlan.fields_of_study, 25),
         3,
@@ -110,13 +161,40 @@ export async function processRun(env: Env, runId: string): Promise<void> {
       )
     );
 
-    const triage = await runStep(env, runId, "llm_triage", () =>
-      withRetries(
-        () => providers.reasoning.triageCandidates(thesis.text, initialCandidates),
-        3,
-        (attempt, error) => console.warn("llm_triage retry", { runId, attempt, error })
-      )
-    );
+    if (initialCandidates.length === 0) {
+      const fallbackQuery = buildFallbackQueryFromThesis(thesis.text);
+      if (fallbackQuery) {
+        await Db.insertEvidence(env.ALEXCLAW_DB, {
+          runId,
+          entityType: "run",
+          entityId: runId,
+          source: "heuristic.fallback_query",
+          detail: { query: fallbackQuery }
+        });
+        initialCandidates = await runStep(env, runId, "semantic_search_fallback", () =>
+          withRetries(
+            () => providers.semanticScholar.search(fallbackQuery, queryPlan.fields_of_study, 25),
+            3,
+            (attempt, error) => console.warn("semantic_search_fallback retry", {
+              runId,
+              attempt,
+              error
+            })
+          )
+        );
+      }
+    }
+
+    const triage: TriageOutput =
+      initialCandidates.length === 0
+        ? { decisions: [] }
+        : await runStep(env, runId, "llm_triage", () =>
+            withRetries(
+              () => providers.reasoning.triageCandidates(thesis.text, initialCandidates),
+              3,
+              (attempt, error) => console.warn("llm_triage retry", { runId, attempt, error })
+            )
+          );
 
     for (const decision of triage.decisions) {
       await Db.insertEvidence(env.ALEXCLAW_DB, {
@@ -136,26 +214,39 @@ export async function processRun(env: Env, runId: string): Promise<void> {
       .filter((decision) => decision.decision === "off_topic")
       .map((decision) => decision.paper_id);
 
-    const recommendationCandidates = await runStep(env, runId, "semantic_recommendations", () =>
-      withRetries(
-        () => providers.semanticScholar.recommend(positiveIds, negativeIds, 25),
-        3,
-        (attempt, error) => console.warn("semantic_recommendations retry", { runId, attempt, error })
-      )
-    );
+    const recommendationCandidates =
+      positiveIds.length === 0
+        ? []
+        : await runStep(env, runId, "semantic_recommendations", () =>
+            withRetries(
+              () => providers.semanticScholar.recommend(positiveIds, negativeIds, 25),
+              3,
+              (attempt, error) => console.warn("semantic_recommendations retry", {
+                runId,
+                attempt,
+                error
+              })
+            )
+          );
 
     const mergedCandidates = dedupeBy(
       [...initialCandidates, ...recommendationCandidates],
       (paper) => paper.paperId
     );
 
-    const seedSelection = await runStep(env, runId, "llm_select_seeds", () =>
-      withRetries(
-        () => providers.reasoning.selectSeeds(thesis.text, mergedCandidates, triage),
-        3,
-        (attempt, error) => console.warn("llm_select_seeds retry", { runId, attempt, error })
-      )
-    );
+    const seedSelection: SeedSelection =
+      mergedCandidates.length === 0
+        ? {
+            seeds: [],
+            coverage_notes: "No Semantic Scholar candidates were found for this query."
+          }
+        : await runStep(env, runId, "llm_select_seeds", () =>
+            withRetries(
+              () => providers.reasoning.selectSeeds(thesis.text, mergedCandidates, triage),
+              3,
+              (attempt, error) => console.warn("llm_select_seeds retry", { runId, attempt, error })
+            )
+          );
 
     await Db.insertEvidence(env.ALEXCLAW_DB, {
       runId,

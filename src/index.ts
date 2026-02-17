@@ -36,6 +36,7 @@ app.get("/auth/google", async (c) => {
     return json({ error: "Google OAuth is not configured" }, 503);
   }
 
+  const callbackUrl = OAuth.resolveGoogleCallbackUrl(c.env, c.req.url);
   const state = Auth.randomToken();
   c.header(
     "Set-Cookie",
@@ -47,7 +48,7 @@ app.get("/auth/google", async (c) => {
     })
   );
 
-  return c.redirect(OAuth.buildGoogleAuthorizationUrl(c.env, state));
+  return c.redirect(OAuth.buildGoogleAuthorizationUrl(c.env, state, callbackUrl));
 });
 
 app.get("/auth/google/callback", async (c) => {
@@ -69,7 +70,8 @@ app.get("/auth/google/callback", async (c) => {
       return json({ error: "Invalid OAuth state" }, 400);
     }
 
-    const token = await OAuth.exchangeGoogleCode(c.env, code);
+    const callbackUrl = OAuth.resolveGoogleCallbackUrl(c.env, c.req.url);
+    const token = await OAuth.exchangeGoogleCode(c.env, code, callbackUrl);
     const profile = await OAuth.fetchGoogleProfile(token.access_token);
 
     if (!profile.sub || !profile.email) {

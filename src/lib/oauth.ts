@@ -1,9 +1,17 @@
 import type { Env } from "./types.js";
 
-const buildGoogleAuthorizationUrl = (env: Env, state: string): string => {
+const resolveGoogleCallbackUrl = (env: Env, requestUrl: string): string => {
+  const configured = env.GOOGLE_CALLBACK_URL?.trim();
+  if (configured) {
+    return configured;
+  }
+  return new URL("/auth/google/callback", requestUrl).toString();
+};
+
+const buildGoogleAuthorizationUrl = (env: Env, state: string, callbackUrl: string): string => {
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.searchParams.set("client_id", env.GOOGLE_CLIENT_ID ?? "");
-  url.searchParams.set("redirect_uri", env.GOOGLE_CALLBACK_URL ?? "");
+  url.searchParams.set("redirect_uri", callbackUrl);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", "openid email profile");
   url.searchParams.set("state", state);
@@ -11,12 +19,16 @@ const buildGoogleAuthorizationUrl = (env: Env, state: string): string => {
   return url.toString();
 };
 
-const exchangeGoogleCode = async (env: Env, code: string): Promise<{ access_token: string }> => {
+const exchangeGoogleCode = async (
+  env: Env,
+  code: string,
+  callbackUrl: string
+): Promise<{ access_token: string }> => {
   const body = new URLSearchParams();
   body.set("code", code);
   body.set("client_id", env.GOOGLE_CLIENT_ID ?? "");
   body.set("client_secret", env.GOOGLE_CLIENT_SECRET ?? "");
-  body.set("redirect_uri", env.GOOGLE_CALLBACK_URL ?? "");
+  body.set("redirect_uri", callbackUrl);
   body.set("grant_type", "authorization_code");
 
   const response = await fetch("https://oauth2.googleapis.com/token", {
@@ -57,10 +69,11 @@ const fetchGoogleProfile = async (accessToken: string): Promise<{
 };
 
 export const OAuth = {
+  resolveGoogleCallbackUrl,
   buildGoogleAuthorizationUrl,
   exchangeGoogleCode,
   fetchGoogleProfile,
   isConfigured(env: Env): boolean {
-    return Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.GOOGLE_CALLBACK_URL);
+    return Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
   }
 };

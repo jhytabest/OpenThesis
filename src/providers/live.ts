@@ -121,7 +121,7 @@ const buildLiveReasoningProvider = (env: Env) => {
     throw new Error("OPENAI_API_KEY is required in live mode");
   }
 
-  const model = env.OPENAI_MODEL ?? "gpt-4.1-mini";
+  const model = env.OPENAI_MODEL ?? "gpt-5-nano";
 
   const runStructuredPrompt = async <T>(input: {
     name: string;

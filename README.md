@@ -46,7 +46,8 @@ cp .env.example .env
 ```
 
 For production, set `SESSION_SECURE_COOKIES=true`.
-Set `GOOGLE_CALLBACK_URL` to your deployed callback URL, e.g. `https://alexclaw.qgs-works.org/auth/google/callback`.
+Google callback URL is derived automatically from request origin (`https://<host>/auth/google/callback`).
+You can still set `GOOGLE_CALLBACK_URL` as an optional override if needed.
 
 3. Create D1 database and queue in Cloudflare (one time)
 

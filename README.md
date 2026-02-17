@@ -45,9 +45,7 @@ npm install
 cp .env.example .env
 ```
 
-For production, set `SESSION_SECURE_COOKIES=true`.
 Google callback URL is derived automatically from request origin (`https://<host>/auth/google/callback`).
-You can still set `GOOGLE_CALLBACK_URL` as an optional override if needed.
 
 3. Create D1 database and queue in Cloudflare (one time)
 
@@ -104,7 +102,6 @@ Auth:
 
 - `GET /auth/google`
 - `GET /auth/google/callback`
-- `POST /api/auth/dev-login` (only when `ENABLE_DEV_AUTH=true`)
 - `GET /api/auth/me`
 - `POST /api/auth/logout`
 

@@ -104,37 +104,6 @@ export const Db = {
     };
   },
 
-  async createOrUpdateDevUser(db: D1Database, input: {
-    email: string;
-    name: string;
-  }): Promise<SessionUser> {
-    const existing = await first<{ id: string }>(
-      db,
-      `SELECT id FROM users WHERE email = ?`,
-      input.email
-    );
-    if (existing) {
-      await run(db, `UPDATE users SET name = ? WHERE id = ?`, input.name, existing.id);
-      return {
-        id: existing.id,
-        email: input.email,
-        name: input.name
-      };
-    }
-
-    const id = crypto.randomUUID();
-    await run(
-      db,
-      `INSERT INTO users (id, email, name, created_at) VALUES (?, ?, ?, ?)`,
-      id,
-      input.email,
-      input.name,
-      nowIso()
-    );
-
-    return { id, email: input.email, name: input.name };
-  },
-
   async createSession(db: D1Database, input: {
     userId: string;
     tokenHash: string;

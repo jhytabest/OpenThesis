@@ -62,11 +62,6 @@ export interface Env {
   ALEXCLAW_RUN_WORKFLOW: {
     create(input: { id?: string; params: { runId: string } }): Promise<{ id: string }>;
   };
-  SESSION_COOKIE_NAME?: string;
-  SESSION_TTL_DAYS?: string;
-  SESSION_SECURE_COOKIES?: string;
-  ENABLE_DEV_AUTH?: string;
-  PROVIDER_MODE?: "mock" | "live";
   OPENAI_MODEL?: string;
   OPENAI_API_KEY?: string;
   SEMANTIC_SCHOLAR_API_KEY?: string;
@@ -74,7 +69,6 @@ export interface Env {
   UNPAYWALL_EMAIL?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
-  GOOGLE_CALLBACK_URL?: string;
 }
 
 export type QueryPlan = z.infer<typeof queryPlanSchema>;

@@ -47,11 +47,6 @@
     "enabled": true
   },
   "vars": {
-    "SESSION_COOKIE_NAME": "sid",
-    "SESSION_TTL_DAYS": "30",
-    "SESSION_SECURE_COOKIES": "true",
-    "ENABLE_DEV_AUTH": "false",
-    "PROVIDER_MODE": "live",
     "OPENAI_MODEL": "gpt-5-nano"
   }
 }

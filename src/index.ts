@@ -19,9 +19,6 @@ const json = (data: unknown, status = 200): Response =>
     headers: { "content-type": "application/json" }
   });
 
-const isSecureCookie = (env: Env): boolean =>
-  ["1", "true", "yes", "on"].includes((env.SESSION_SECURE_COOKIES ?? "true").toLowerCase());
-
 app.get("/", (c) => c.html(renderHomeHtml()));
 
 app.get("/internal/health", () => json({ ok: true, timestamp: new Date().toISOString() }));
@@ -36,7 +33,7 @@ app.get("/auth/google", async (c) => {
     return json({ error: "Google OAuth is not configured" }, 503);
   }
 
-  const callbackUrl = OAuth.resolveGoogleCallbackUrl(c.env, c.req.url);
+  const callbackUrl = OAuth.resolveGoogleCallbackUrl(c.req.url);
   const state = Auth.randomToken();
   c.header(
     "Set-Cookie",
@@ -44,7 +41,7 @@ app.get("/auth/google", async (c) => {
       name: "oauth_state",
       value: state,
       maxAge: 600,
-      secure: isSecureCookie(c.env)
+      secure: true
     })
   );
 
@@ -70,7 +67,7 @@ app.get("/auth/google/callback", async (c) => {
       return json({ error: "Invalid OAuth state" }, 400);
     }
 
-    const callbackUrl = OAuth.resolveGoogleCallbackUrl(c.env, c.req.url);
+    const callbackUrl = OAuth.resolveGoogleCallbackUrl(c.req.url);
     const token = await OAuth.exchangeGoogleCode(c.env, code, callbackUrl);
     const profile = await OAuth.fetchGoogleProfile(token.access_token);
 
@@ -91,7 +88,7 @@ app.get("/auth/google/callback", async (c) => {
         name: "oauth_state",
         value: "",
         maxAge: 0,
-        secure: isSecureCookie(c.env)
+        secure: true
       }),
       { append: true }
     );
@@ -99,27 +96,6 @@ app.get("/auth/google/callback", async (c) => {
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : String(error) }, 500);
   }
-});
-
-app.post("/api/auth/dev-login", async (c) => {
-  if (!Auth.isDevAuthEnabled(c.env)) {
-    return json({ error: "Dev auth is disabled" }, 403);
-  }
-
-  const bodyRaw = await c.req.json().catch(() => ({}));
-  const body = bodyRaw as { email?: string; name?: string };
-  const email = body.email?.trim().toLowerCase();
-  if (!email) {
-    return json({ error: "email is required" }, 400);
-  }
-
-  const user = await Db.createOrUpdateDevUser(c.env.ALEXCLAW_DB, {
-    email,
-    name: body.name?.trim() || email
-  });
-
-  await Auth.createSessionCookie(c, user.id);
-  return json({ ok: true, user });
 });
 
 app.get("/api/auth/me", async (c) => {

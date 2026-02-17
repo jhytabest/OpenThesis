@@ -3,22 +3,9 @@ import { Db } from "./db.js";
 import type { Env, SessionUser } from "./types.js";
 
 const textEncoder = new TextEncoder();
-
-const asBool = (value: string | undefined, fallback: boolean): boolean => {
-  if (value == null || value === "") {
-    return fallback;
-  }
-  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
-};
-
-const parseTtlDays = (value: string | undefined): number => {
-  const parsed = Number(value ?? "30");
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
-};
-
-const sessionCookieName = (env: Env): string => env.SESSION_COOKIE_NAME ?? "sid";
-
-const sessionCookieSecure = (env: Env): boolean => asBool(env.SESSION_SECURE_COOKIES, true);
+const SESSION_COOKIE_NAME = "sid";
+const SESSION_TTL_DAYS = 30;
+const SESSION_COOKIE_SECURE = true;
 
 const parseCookies = (cookieHeader: string | null | undefined): Record<string, string> => {
   if (!cookieHeader) {
@@ -70,8 +57,7 @@ export const Auth = {
   async createSessionCookie(c: Context<{ Bindings: Env }>, userId: string): Promise<void> {
     const token = randomToken();
     const tokenHash = await hashToken(token);
-    const ttlDays = parseTtlDays(c.env.SESSION_TTL_DAYS);
-    const expires = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
+    const expires = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
 
     await Db.createSession(c.env.ALEXCLAW_DB, {
       userId,
@@ -82,10 +68,10 @@ export const Auth = {
     c.header(
       "Set-Cookie",
       toSetCookie({
-        name: sessionCookieName(c.env),
+        name: SESSION_COOKIE_NAME,
         value: token,
         expires,
-        secure: sessionCookieSecure(c.env)
+        secure: SESSION_COOKIE_SECURE
       })
     );
   },
@@ -94,17 +80,17 @@ export const Auth = {
     c.header(
       "Set-Cookie",
       toSetCookie({
-        name: sessionCookieName(c.env),
+        name: SESSION_COOKIE_NAME,
         value: "",
         maxAge: 0,
-        secure: sessionCookieSecure(c.env)
+        secure: SESSION_COOKIE_SECURE
       })
     );
   },
 
   async resolveUser(c: Context<{ Bindings: Env }>): Promise<SessionUser | null> {
     const cookies = parseCookies(c.req.header("cookie"));
-    const token = cookies[sessionCookieName(c.env)];
+    const token = cookies[SESSION_COOKIE_NAME];
     if (!token) {
       return null;
     }
@@ -114,7 +100,7 @@ export const Auth = {
 
   async deleteSession(c: Context<{ Bindings: Env }>): Promise<void> {
     const cookies = parseCookies(c.req.header("cookie"));
-    const token = cookies[sessionCookieName(c.env)];
+    const token = cookies[SESSION_COOKIE_NAME];
     if (!token) {
       return;
     }
@@ -125,8 +111,5 @@ export const Auth = {
   parseCookies,
   toSetCookie,
   hashToken,
-  randomToken,
-  isDevAuthEnabled(env: Env): boolean {
-    return asBool(env.ENABLE_DEV_AUTH, false);
-  }
+  randomToken
 };

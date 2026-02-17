@@ -1,12 +1,7 @@
 import type { Env } from "./types.js";
 
-const resolveGoogleCallbackUrl = (env: Env, requestUrl: string): string => {
-  const configured = env.GOOGLE_CALLBACK_URL?.trim();
-  if (configured) {
-    return configured;
-  }
-  return new URL("/auth/google/callback", requestUrl).toString();
-};
+const resolveGoogleCallbackUrl = (requestUrl: string): string =>
+  new URL("/auth/google/callback", requestUrl).toString();
 
 const buildGoogleAuthorizationUrl = (env: Env, state: string, callbackUrl: string): string => {
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");

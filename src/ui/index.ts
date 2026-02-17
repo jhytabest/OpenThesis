@@ -167,26 +167,7 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
 
     const auth = byId('auth');
     if (!state.user) {
-      auth.innerHTML =
-        '<div class="actions"><a href="/auth/google"><button>Sign in with Google</button></a></div>' +
-        '<div class="muted" style="margin-top:10px;">Dev login (if enabled)</div>' +
-        '<div class="row"><input id="devEmail" placeholder="dev@example.com" />' +
-        '<button id="devLogin" class="secondary">Dev Login</button></div>';
-      const devLogin = byId('devLogin');
-      if (devLogin) {
-        devLogin.onclick = async () => {
-          try {
-            const email = byId('devEmail').value;
-            await api('/api/auth/dev-login', {
-              method: 'POST',
-              body: JSON.stringify({ email, name: email.split('@')[0] })
-            });
-            await boot();
-          } catch (error) {
-            showError(error);
-          }
-        };
-      }
+      auth.innerHTML = '<div class="actions"><a href="/auth/google"><button>Sign in with Google</button></a></div>';
       byId('submitPanel').hidden = true;
       byId('runsPanel').hidden = true;
       byId('detailsPanel').hidden = true;

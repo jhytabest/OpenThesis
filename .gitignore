@@ -1,0 +1,8 @@
+node_modules
+.wrangler
+.env
+coverage
+dist
+*.db
+*.db-shm
+*.db-wal

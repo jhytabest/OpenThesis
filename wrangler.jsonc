@@ -1,0 +1,58 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "alexclaw",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-02-17",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "alexclaw.qgs-works.org",
+      "zone_name": "qgs-works.org",
+      "custom_domain": true
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "ALEXCLAW_DB",
+      "database_name": "alexclaw",
+      "database_id": "38e27e5d-1e74-44d7-8102-d2d00542bb4e",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "ALEXCLAW_RUN_QUEUE",
+        "queue": "alexclaw-runs"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "alexclaw-runs",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3
+      }
+    ]
+  },
+  "workflows": [
+    {
+      "name": "alexclaw-run-pipeline",
+      "binding": "ALEXCLAW_RUN_WORKFLOW",
+      "class_name": "AlexclawRunWorkflow"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "SESSION_COOKIE_NAME": "sid",
+    "SESSION_TTL_DAYS": "30",
+    "SESSION_SECURE_COOKIES": "true",
+    "ENABLE_DEV_AUTH": "false",
+    "PROVIDER_MODE": "live",
+    "OPENAI_MODEL": "gpt-4.1-mini",
+    "GOOGLE_CALLBACK_URL": "https://alexclaw.qgs-works.org/auth/google/callback"
+  }
+}

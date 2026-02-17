@@ -20,6 +20,7 @@ Production-oriented MVP for thesis-to-paper-graph using:
   - Unpaywall PDF enrichment
 - Traceable run evidence and step audit trail
 - Minimal UI to inspect papers/authors/edges
+- Global Semantic Scholar throttle at 1 request/second (D1-backed lease)
 
 ## Project Layout
 

@@ -20,6 +20,11 @@ const run = async (db: D1Database, sql: string, ...binds: unknown[]): Promise<vo
   await db.prepare(sql).bind(...binds).run();
 };
 
+const runChanges = async (db: D1Database, sql: string, ...binds: unknown[]): Promise<number> => {
+  const result = await db.prepare(sql).bind(...binds).run();
+  return Number((result as { meta?: { changes?: number } }).meta?.changes ?? 0);
+};
+
 export interface RunRow {
   id: string;
   user_id: string;
@@ -716,5 +721,44 @@ export const Db = {
       metrics[row.status] = row.total;
     }
     return metrics;
+  },
+
+  async ensureGlobalRateLimitKey(db: D1Database, key: string): Promise<void> {
+    await run(
+      db,
+      `INSERT INTO global_rate_limits (rate_key, next_allowed_at_ms, updated_at)
+       VALUES (?, 0, ?)
+       ON CONFLICT(rate_key) DO NOTHING`,
+      key,
+      nowIso()
+    );
+  },
+
+  async readGlobalRateLimitNextAllowedMs(db: D1Database, key: string): Promise<number> {
+    const row = await first<{ next_allowed_at_ms: number }>(
+      db,
+      `SELECT next_allowed_at_ms FROM global_rate_limits WHERE rate_key = ?`,
+      key
+    );
+    return Number(row?.next_allowed_at_ms ?? 0);
+  },
+
+  async compareAndSetGlobalRateLimit(
+    db: D1Database,
+    key: string,
+    expectedNextAllowedMs: number,
+    newNextAllowedMs: number
+  ): Promise<boolean> {
+    const changes = await runChanges(
+      db,
+      `UPDATE global_rate_limits
+       SET next_allowed_at_ms = ?, updated_at = ?
+       WHERE rate_key = ? AND next_allowed_at_ms = ?`,
+      newNextAllowedMs,
+      nowIso(),
+      key,
+      expectedNextAllowedMs
+    );
+    return changes > 0;
   }
 };

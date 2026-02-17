@@ -4,6 +4,8 @@ import type { CanonicalPaper, Env, GraphEdge } from "./types.js";
 import { buildProviders } from "../providers/index.js";
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+const SEMANTIC_SCHOLAR_RATE_LIMIT_KEY = "semantic_scholar_api";
+const SEMANTIC_SCHOLAR_MIN_INTERVAL_MS = 1000;
 
 async function withRetries<T>(
   fn: () => Promise<T>,
@@ -40,6 +42,33 @@ const dedupeBy = <T>(items: T[], key: (item: T) => string): T[] => {
     output.push(item);
   }
   return output;
+};
+
+const acquireGlobalRateLimitSlot = async (
+  env: Env,
+  key: string,
+  minIntervalMs: number
+): Promise<void> => {
+  await Db.ensureGlobalRateLimitKey(env.ALEXCLAW_DB, key);
+
+  while (true) {
+    const now = Date.now();
+    const nextAllowedAt = await Db.readGlobalRateLimitNextAllowedMs(env.ALEXCLAW_DB, key);
+    if (nextAllowedAt > now) {
+      await sleep(nextAllowedAt - now);
+      continue;
+    }
+
+    const claimed = await Db.compareAndSetGlobalRateLimit(
+      env.ALEXCLAW_DB,
+      key,
+      nextAllowedAt,
+      now + minIntervalMs
+    );
+    if (claimed) {
+      return;
+    }
+  }
 };
 
 async function runStep<T>(
@@ -106,7 +135,14 @@ export async function processRun(env: Env, runId: string): Promise<void> {
 
     const initialCandidates = await runStep(env, runId, "semantic_search", () =>
       withRetries(
-        () => providers.semanticScholar.search(queryPlan.query, queryPlan.fields_of_study, 25),
+        async () => {
+          await acquireGlobalRateLimitSlot(
+            env,
+            SEMANTIC_SCHOLAR_RATE_LIMIT_KEY,
+            SEMANTIC_SCHOLAR_MIN_INTERVAL_MS
+          );
+          return providers.semanticScholar.search(queryPlan.query, queryPlan.fields_of_study, 25);
+        },
         3,
         (attempt, error) => console.warn("semantic_search retry", { runId, attempt, error })
       )
@@ -148,7 +184,14 @@ export async function processRun(env: Env, runId: string): Promise<void> {
 
     const recommendationCandidates = await runStep(env, runId, "semantic_recommendations", () =>
       withRetries(
-        () => providers.semanticScholar.recommend(positiveIds, negativeIds, 25),
+        async () => {
+          await acquireGlobalRateLimitSlot(
+            env,
+            SEMANTIC_SCHOLAR_RATE_LIMIT_KEY,
+            SEMANTIC_SCHOLAR_MIN_INTERVAL_MS
+          );
+          return providers.semanticScholar.recommend(positiveIds, negativeIds, 25);
+        },
         3,
         (attempt, error) => console.warn("semantic_recommendations retry", {
           runId,

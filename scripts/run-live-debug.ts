@@ -199,6 +199,16 @@ const executeLiveFlow = async (input: {
 }): Promise<void> => {
   const { thesis, providers, runDir } = input;
   const stepData: Record<string, unknown> = {};
+  let nextSemanticScholarAllowedAt = 0;
+
+  const withSemanticScholarRateLimit = async <T>(fn: () => Promise<T>): Promise<T> => {
+    const nowMs = Date.now();
+    if (nextSemanticScholarAllowedAt > nowMs) {
+      await sleep(nextSemanticScholarAllowedAt - nowMs);
+    }
+    nextSemanticScholarAllowedAt = Date.now() + 1000;
+    return fn();
+  };
 
   const queryPlan = await withRetries("llm_query_plan", () =>
     providers.reasoning.generateQueryPlan(thesis.text)
@@ -206,7 +216,9 @@ const executeLiveFlow = async (input: {
   stepData.queryPlan = queryPlan;
 
   const initialCandidates = await withRetries("semantic_search", () =>
-    providers.semanticScholar.search(queryPlan.query, queryPlan.fields_of_study, 25)
+    withSemanticScholarRateLimit(() =>
+      providers.semanticScholar.search(queryPlan.query, queryPlan.fields_of_study, 25)
+    )
   );
   if (initialCandidates.length === 0) {
     throw new Error("semantic_search returned 0 candidates");
@@ -230,7 +242,9 @@ const executeLiveFlow = async (input: {
   }
 
   const recommendationCandidates = await withRetries("semantic_recommendations", () =>
-    providers.semanticScholar.recommend(positiveIds, negativeIds, 25)
+    withSemanticScholarRateLimit(() =>
+      providers.semanticScholar.recommend(positiveIds, negativeIds, 25)
+    )
   );
   stepData.recommendationCandidates = recommendationCandidates;
 

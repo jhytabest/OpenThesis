@@ -21,6 +21,7 @@ Production-oriented MVP for thesis-to-paper-graph using:
 - Traceable run evidence and step audit trail
 - Minimal UI to inspect papers/authors/edges
 - Global Semantic Scholar throttle at 1 request/second (D1-backed lease)
+- Semantic Scholar query generation aligned with Graph API rules (plain text, no boolean syntax, no hyphenated terms)
 
 ## Project Layout
 

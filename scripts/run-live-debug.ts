@@ -217,7 +217,13 @@ const executeLiveFlow = async (input: {
 
   const initialCandidates = await withRetries("semantic_search", () =>
     withSemanticScholarRateLimit(() =>
-      providers.semanticScholar.search(queryPlan.query, queryPlan.fields_of_study, 25)
+      providers.semanticScholar.search(
+        queryPlan.query,
+        queryPlan.fields_of_study,
+        25,
+        queryPlan.time_horizon,
+        queryPlan.must_terms
+      )
     )
   );
   if (initialCandidates.length === 0) {

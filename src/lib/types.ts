@@ -86,7 +86,13 @@ export interface ReasoningProvider {
 }
 
 export interface SemanticScholarProvider {
-  search(query: string, fieldsOfStudy: string[], limit: number): Promise<CandidatePaper[]>;
+  search(
+    query: string,
+    fieldsOfStudy: string[],
+    limit: number,
+    timeHorizon?: { start_year: number | null; end_year: number | null },
+    mustTerms?: string[]
+  ): Promise<CandidatePaper[]>;
   recommend(
     positivePaperIds: string[],
     negativePaperIds: string[],

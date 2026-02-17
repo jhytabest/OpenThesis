@@ -1,8 +1,36 @@
 import { z } from "zod";
 
+export const semanticScholarFieldsOfStudy = [
+  "Computer Science",
+  "Medicine",
+  "Chemistry",
+  "Biology",
+  "Materials Science",
+  "Physics",
+  "Geology",
+  "Psychology",
+  "Art",
+  "History",
+  "Geography",
+  "Sociology",
+  "Business",
+  "Political Science",
+  "Economics",
+  "Philosophy",
+  "Mathematics",
+  "Engineering",
+  "Environmental Science",
+  "Agricultural and Food Sciences",
+  "Education",
+  "Law",
+  "Linguistics"
+] as const;
+
+const semanticScholarFieldSchema = z.enum(semanticScholarFieldsOfStudy);
+
 export const queryPlanSchema = z.object({
   query: z.string().min(5),
-  fields_of_study: z.array(z.string()).min(1),
+  fields_of_study: z.array(semanticScholarFieldSchema).min(1).max(6),
   must_terms: z.array(z.string()),
   must_not_terms: z.array(z.string()),
   time_horizon: z.object({

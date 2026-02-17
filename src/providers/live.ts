@@ -1,6 +1,7 @@
 import { zodToJsonSchema } from "zod-to-json-schema";
 import {
   queryPlanSchema,
+  semanticScholarFieldsOfStudy,
   seedSelectionSchema,
   triageOutputSchema
 } from "../lib/zod-schemas.js";
@@ -193,7 +194,11 @@ const buildLiveReasoningProvider = (env: Env) => {
         name: "query_plan",
         schema: openAiStrictSchema(queryPlanSchema, "query_plan"),
         system:
-          "You generate one broad Semantic Scholar query plus fields-of-study constraints for a thesis. Keep the query concise (about 8-18 terms), avoid long boolean chains, and return strict JSON.",
+          `You generate one broad Semantic Scholar paper-search query plus fields-of-study constraints for a thesis.
+The query must be plain text only (no boolean operators, no special syntax), and hyphenated terms must be written with spaces.
+Keep it concise (roughly 6-14 terms), high recall, and domain-relevant.
+fields_of_study must only use this exact list: ${semanticScholarFieldsOfStudy.join(", ")}.
+Return strict JSON.`,
         user: `Thesis text:\n${thesisText}`,
         parse: (value) => queryPlanSchema.parse(value)
       });
@@ -235,6 +240,7 @@ const buildLiveReasoningProvider = (env: Env) => {
 const buildLiveSemanticScholarProvider = (env: Env) => {
   const apiKey = env.SEMANTIC_SCHOLAR_API_KEY;
   const baseUrl = "https://api.semanticscholar.org";
+  const allowedFields = new Set<string>(semanticScholarFieldsOfStudy);
 
   const withHeaders = (headers?: HeadersInit): HeadersInit => {
     const merged: Record<string, string> = {
@@ -259,6 +265,89 @@ const buildLiveSemanticScholarProvider = (env: Env) => {
     "fieldsOfStudy",
     "authors"
   ].join(",");
+
+  const sanitizePlainSearchQuery = (value: string): string =>
+    value
+      .replace(/[-_]/g, " ")
+      .replace(/\b(AND|OR|NOT)\b/gi, " ")
+      .replace(/[^a-zA-Z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const queryStopwords = new Set([
+    "the",
+    "and",
+    "for",
+    "with",
+    "from",
+    "into",
+    "under",
+    "between",
+    "using",
+    "based",
+    "study",
+    "thesis",
+    "effects",
+    "impact"
+  ]);
+
+  const buildSearchQuery = (query: string, mustTerms?: string[]): string => {
+    const tokens: string[] = [];
+    const pushTokens = (value: string): void => {
+      for (const token of sanitizePlainSearchQuery(value).split(" ")) {
+        const lower = token.toLowerCase();
+        if (!lower || queryStopwords.has(lower)) {
+          continue;
+        }
+        if (token.length <= 1) {
+          continue;
+        }
+        tokens.push(token);
+      }
+    };
+
+    for (const term of mustTerms ?? []) {
+      pushTokens(term);
+    }
+    pushTokens(query);
+
+    const deduped: string[] = [];
+    const seen = new Set<string>();
+    for (const token of tokens) {
+      const lower = token.toLowerCase();
+      if (seen.has(lower)) {
+        continue;
+      }
+      seen.add(lower);
+      deduped.push(token);
+      if (deduped.length >= 10) {
+        break;
+      }
+    }
+
+    return deduped.join(" ");
+  };
+
+  const toYearFilter = (timeHorizon?: {
+    start_year: number | null;
+    end_year: number | null;
+  }): string | null => {
+    if (!timeHorizon) {
+      return null;
+    }
+    const start = timeHorizon.start_year;
+    const end = timeHorizon.end_year;
+    if (start && end) {
+      return `${start}-${end}`;
+    }
+    if (start && !end) {
+      return `${start}-`;
+    }
+    if (!start && end) {
+      return `-${end}`;
+    }
+    return null;
+  };
 
   const mapResponse = (payload: {
     data?: Array<{
@@ -291,13 +380,32 @@ const buildLiveSemanticScholarProvider = (env: Env) => {
       }));
 
   return {
-    async search(query: string, fieldsOfStudy: string[], limit: number): Promise<CandidatePaper[]> {
+    async search(
+      query: string,
+      fieldsOfStudy: string[],
+      limit: number,
+      timeHorizon?: { start_year: number | null; end_year: number | null },
+      mustTerms?: string[]
+    ): Promise<CandidatePaper[]> {
+      const searchQuery = buildSearchQuery(query, mustTerms);
+      if (!searchQuery) {
+        throw new Error("Semantic Scholar query is empty after sanitization");
+      }
+
+      const normalizedFields = [...new Set(fieldsOfStudy)].filter((field) =>
+        allowedFields.has(field)
+      );
+
       const url = new URL(`${baseUrl}/graph/v1/paper/search`);
-      url.searchParams.set("query", query);
+      url.searchParams.set("query", searchQuery);
       url.searchParams.set("limit", String(limit));
       url.searchParams.set("fields", fields);
-      if (fieldsOfStudy.length > 0) {
-        url.searchParams.set("fieldsOfStudy", fieldsOfStudy.join(","));
+      if (normalizedFields.length > 0) {
+        url.searchParams.set("fieldsOfStudy", normalizedFields.join(","));
+      }
+      const yearFilter = toYearFilter(timeHorizon);
+      if (yearFilter) {
+        url.searchParams.set("year", yearFilter);
       }
 
       const payload = await fetchJson<{
@@ -362,6 +470,10 @@ const buildLiveSemanticScholarProvider = (env: Env) => {
 };
 
 const buildLiveOpenAlexProvider = (env: Env) => {
+  if (!env.OPENALEX_API_KEY) {
+    throw new Error("OPENALEX_API_KEY is required in live mode");
+  }
+
   const baseUrl = "https://api.openalex.org";
 
   const tokenizeTitle = (value: string): Set<string> =>
@@ -396,10 +508,55 @@ const buildLiveOpenAlexProvider = (env: Env) => {
     return false;
   };
 
-  const withAuth = (url: URL): URL => {
-    if (env.OPENALEX_API_KEY) {
-      url.searchParams.set("api_key", env.OPENALEX_API_KEY);
+  const titleSimilarity = (left: string, right: string): number => {
+    const leftTokens = tokenizeTitle(left);
+    const rightTokens = tokenizeTitle(right);
+    if (leftTokens.size === 0 || rightTokens.size === 0) {
+      return 0;
     }
+    let overlap = 0;
+    for (const token of leftTokens) {
+      if (rightTokens.has(token)) {
+        overlap += 1;
+      }
+    }
+    return overlap / Math.max(leftTokens.size, rightTokens.size);
+  };
+
+  const pickBestTitleMatch = (
+    seed: CandidatePaper,
+    candidates: Array<{
+      id?: string;
+      title?: string;
+      display_name?: string;
+      publication_year?: number;
+      cited_by_count?: number;
+      doi?: string;
+      abstract_inverted_index?: Record<string, number[]>;
+      concepts?: Array<{ display_name?: string; score?: number }>;
+      primary_topic?: { field?: { display_name?: string } };
+      authorships?: Array<{ author?: { id?: string; display_name?: string; orcid?: string } }>;
+      referenced_works?: string[];
+    }>
+  ) =>
+    candidates
+      .map((candidate) => {
+        const candidateTitle = candidate.title ?? candidate.display_name ?? "";
+        const sim = titleSimilarity(seed.title, candidateTitle);
+        const yearScore =
+          seed.year && candidate.publication_year
+            ? 1 / (1 + Math.abs(seed.year - candidate.publication_year))
+            : 0.5;
+        return {
+          candidate,
+          score: 0.85 * sim + 0.15 * yearScore
+        };
+      })
+      .sort((a, b) => b.score - a.score)
+      .find((entry) => entry.score >= 0.2)?.candidate;
+
+  const withAuth = (url: URL): URL => {
+    url.searchParams.set("api_key", env.OPENALEX_API_KEY!);
     return url;
   };
 
@@ -491,11 +648,25 @@ const buildLiveOpenAlexProvider = (env: Env) => {
         if (!work) {
           const url = withAuth(new URL(`${baseUrl}/works`));
           url.searchParams.set("search", seed.title);
-          url.searchParams.set("per-page", "1");
-          const searchPayload = await fetchJson<{ results?: Array<any> }>(url.toString(), {
+          url.searchParams.set("per-page", "10");
+          const searchPayload = await fetchJson<{
+            results?: Array<{
+              id?: string;
+              title?: string;
+              display_name?: string;
+              publication_year?: number;
+              cited_by_count?: number;
+              doi?: string;
+              abstract_inverted_index?: Record<string, number[]>;
+              concepts?: Array<{ display_name?: string; score?: number }>;
+              primary_topic?: { field?: { display_name?: string } };
+              authorships?: Array<{ author?: { id?: string; display_name?: string; orcid?: string } }>;
+              referenced_works?: string[];
+            }>;
+          }>(url.toString(), {
             method: "GET"
           });
-          work = searchPayload.results?.[0];
+          work = pickBestTitleMatch(seed, searchPayload.results ?? []);
         }
 
         if (work?.id) {

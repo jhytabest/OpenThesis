@@ -141,7 +141,13 @@ export async function processRun(env: Env, runId: string): Promise<void> {
             SEMANTIC_SCHOLAR_RATE_LIMIT_KEY,
             SEMANTIC_SCHOLAR_MIN_INTERVAL_MS
           );
-          return providers.semanticScholar.search(queryPlan.query, queryPlan.fields_of_study, 25);
+          return providers.semanticScholar.search(
+            queryPlan.query,
+            queryPlan.fields_of_study,
+            25,
+            queryPlan.time_horizon,
+            queryPlan.must_terms
+          );
         },
         3,
         (attempt, error) => console.warn("semantic_search retry", { runId, attempt, error })

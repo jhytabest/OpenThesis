@@ -260,17 +260,6 @@ const buildLiveSemanticScholarProvider = (env: Env) => {
     "authors"
   ].join(",");
 
-  const normalizeQuery = (value: string, maxTerms: number): string =>
-    value
-      .replace(/["()]/g, " ")
-      .replace(/\b(AND|OR|NOT)\b/gi, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .split(" ")
-      .filter((term) => term.length > 1)
-      .slice(0, maxTerms)
-      .join(" ");
-
   const mapResponse = (payload: {
     data?: Array<{
       paperId?: string;
@@ -303,60 +292,34 @@ const buildLiveSemanticScholarProvider = (env: Env) => {
 
   return {
     async search(query: string, fieldsOfStudy: string[], limit: number): Promise<CandidatePaper[]> {
-      const executeSearch = async (
-        queryValue: string,
-        fieldsFilter: string[]
-      ): Promise<CandidatePaper[]> => {
-        const url = new URL(`${baseUrl}/graph/v1/paper/search`);
-        url.searchParams.set("query", queryValue);
-        url.searchParams.set("limit", String(limit));
-        url.searchParams.set("fields", fields);
-        if (fieldsFilter.length > 0) {
-          url.searchParams.set("fieldsOfStudy", fieldsFilter.join(","));
-        }
-
-        const payload = await fetchJson<{
-          data?: Array<{
-            paperId?: string;
-            title?: string;
-            abstract?: string;
-            year?: number;
-            citationCount?: number;
-            externalIds?: { DOI?: string };
-            fieldsOfStudy?: string[];
-            authors?: Array<{ authorId?: string; name?: string }>;
-          }>;
-        }>(
-          url.toString(),
-          {
-            method: "GET",
-            headers: withHeaders()
-          }
-        );
-        return mapResponse(payload);
-      };
-
-      const primaryQuery = normalizeQuery(query, 18);
-      const shortQuery = normalizeQuery(query, 10);
-      const searchQuery = primaryQuery || query;
-
-      const initial = await executeSearch(searchQuery, fieldsOfStudy);
-      if (initial.length > 0) {
-        return initial;
-      }
-
+      const url = new URL(`${baseUrl}/graph/v1/paper/search`);
+      url.searchParams.set("query", query);
+      url.searchParams.set("limit", String(limit));
+      url.searchParams.set("fields", fields);
       if (fieldsOfStudy.length > 0) {
-        const withoutFieldFilter = await executeSearch(searchQuery, []);
-        if (withoutFieldFilter.length > 0) {
-          return withoutFieldFilter;
+        url.searchParams.set("fieldsOfStudy", fieldsOfStudy.join(","));
+      }
+
+      const payload = await fetchJson<{
+        data?: Array<{
+          paperId?: string;
+          title?: string;
+          abstract?: string;
+          year?: number;
+          citationCount?: number;
+          externalIds?: { DOI?: string };
+          fieldsOfStudy?: string[];
+          authors?: Array<{ authorId?: string; name?: string }>;
+        }>;
+      }>(
+        url.toString(),
+        {
+          method: "GET",
+          headers: withHeaders()
         }
-      }
+      );
 
-      if (shortQuery && shortQuery !== searchQuery) {
-        return executeSearch(shortQuery, []);
-      }
-
-      return [];
+      return mapResponse(payload);
     },
 
     async recommend(
@@ -365,7 +328,7 @@ const buildLiveSemanticScholarProvider = (env: Env) => {
       limit: number
     ): Promise<CandidatePaper[]> {
       if (positivePaperIds.length === 0) {
-        return [];
+        throw new Error("semantic_recommendations requires at least one positivePaperId");
       }
 
       const payload = await fetchJson<{

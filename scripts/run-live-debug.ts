@@ -34,55 +34,6 @@ const dedupeBy = <T>(items: T[], key: (item: T) => string): T[] => {
   return output;
 };
 
-const STOP_WORDS = new Set([
-  "the",
-  "and",
-  "for",
-  "with",
-  "that",
-  "this",
-  "from",
-  "into",
-  "over",
-  "under",
-  "between",
-  "across",
-  "using",
-  "uses",
-  "used",
-  "study",
-  "thesis",
-  "their",
-  "there",
-  "where",
-  "which",
-  "while",
-  "about",
-  "through",
-  "based",
-  "model",
-  "models"
-]);
-
-const buildFallbackQueryFromThesis = (text: string): string => {
-  const counts = new Map<string, number>();
-  for (const token of text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, " ")
-    .split(/\s+/)
-    .filter((word) => word.length >= 4)) {
-    if (STOP_WORDS.has(token)) {
-      continue;
-    }
-    counts.set(token, (counts.get(token) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 12)
-    .map(([token]) => token)
-    .join(" ");
-};
-
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -254,26 +205,17 @@ const executeLiveFlow = async (input: {
   );
   stepData.queryPlan = queryPlan;
 
-  let initialCandidates = await withRetries("semantic_search", () =>
+  const initialCandidates = await withRetries("semantic_search", () =>
     providers.semanticScholar.search(queryPlan.query, queryPlan.fields_of_study, 25)
   );
   if (initialCandidates.length === 0) {
-    const fallbackQuery = buildFallbackQueryFromThesis(thesis.text);
-    if (fallbackQuery) {
-      stepData.semanticSearchFallbackQuery = fallbackQuery;
-      initialCandidates = await withRetries("semantic_search_fallback", () =>
-        providers.semanticScholar.search(fallbackQuery, queryPlan.fields_of_study, 25)
-      );
-    }
+    throw new Error("semantic_search returned 0 candidates");
   }
   stepData.initialCandidates = initialCandidates;
 
-  const triage =
-    initialCandidates.length === 0
-      ? { decisions: [] }
-      : await withRetries("llm_triage", () =>
-          providers.reasoning.triageCandidates(thesis.text, initialCandidates)
-        );
+  const triage = await withRetries("llm_triage", () =>
+    providers.reasoning.triageCandidates(thesis.text, initialCandidates)
+  );
   stepData.triage = triage;
 
   const positiveIds = triage.decisions
@@ -283,12 +225,13 @@ const executeLiveFlow = async (input: {
     .filter((decision) => decision.decision === "off_topic")
     .map((decision) => decision.paper_id);
 
-  const recommendationCandidates =
-    positiveIds.length === 0
-      ? []
-      : await withRetries("semantic_recommendations", () =>
-          providers.semanticScholar.recommend(positiveIds, negativeIds, 25)
-        );
+  if (positiveIds.length === 0) {
+    throw new Error("llm_triage returned 0 on-topic papers");
+  }
+
+  const recommendationCandidates = await withRetries("semantic_recommendations", () =>
+    providers.semanticScholar.recommend(positiveIds, negativeIds, 25)
+  );
   stepData.recommendationCandidates = recommendationCandidates;
 
   const mergedCandidates = dedupeBy(
@@ -297,15 +240,13 @@ const executeLiveFlow = async (input: {
   );
   stepData.mergedCandidatesCount = mergedCandidates.length;
 
-  const seedSelection =
-    mergedCandidates.length === 0
-      ? {
-          seeds: [],
-          coverage_notes: "No Semantic Scholar candidates were found for this query."
-        }
-      : await withRetries("llm_select_seeds", () =>
-          providers.reasoning.selectSeeds(thesis.text, mergedCandidates, triage)
-        );
+  if (mergedCandidates.length === 0) {
+    throw new Error("semantic search + recommendations produced 0 merged candidates");
+  }
+
+  const seedSelection = await withRetries("llm_select_seeds", () =>
+    providers.reasoning.selectSeeds(thesis.text, mergedCandidates, triage)
+  );
   stepData.seedSelection = seedSelection;
 
   const candidateById = new Map(mergedCandidates.map((candidate) => [candidate.paperId, candidate]));
@@ -315,13 +256,18 @@ const executeLiveFlow = async (input: {
       .filter((candidate): candidate is CandidatePaper => Boolean(candidate)),
     (candidate) => candidate.paperId
   );
-  const fallbackSeeds = mergedCandidates.filter((candidate) => positiveIds.includes(candidate.paperId)).slice(0, 3);
-  const seedsToResolve = selectedSeedCandidates.length > 0 ? selectedSeedCandidates : fallbackSeeds;
+  if (selectedSeedCandidates.length === 0) {
+    throw new Error("llm_select_seeds did not map to any candidate paper IDs");
+  }
+  const seedsToResolve = selectedSeedCandidates;
   stepData.seedIds = seedsToResolve.map((seed) => seed.paperId);
 
   const canonicalSeeds = await withRetries("openalex_resolve", () =>
     providers.openAlex.resolveSeeds(seedsToResolve)
   );
+  if (canonicalSeeds.length === 0) {
+    throw new Error("openalex_resolve returned 0 canonical seeds");
+  }
   stepData.canonicalSeeds = canonicalSeeds;
 
   const expanded = await withRetries("openalex_expand", () =>
@@ -333,6 +279,9 @@ const executeLiveFlow = async (input: {
     [...canonicalSeeds, ...expanded.papers].filter((paper) => paper.openalexId.length > 0),
     (paper) => paper.openalexId
   );
+  if (allPapers.length === 0) {
+    throw new Error("graph expansion resulted in 0 papers");
+  }
   const allEdges = dedupeBy<GraphEdge>(
     expanded.edges.filter((edge) => edge.sourceOpenalexId && edge.targetOpenalexId),
     (edge) => `${edge.sourceOpenalexId}|${edge.targetOpenalexId}|${edge.type}`

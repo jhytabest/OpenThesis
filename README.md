@@ -89,7 +89,7 @@ Artifacts are written under `debug-runs/<timestamp>/<thesis-id>/`:
 - `steps.json`: raw outputs per pipeline step
 - `result.json`: summary, scored papers, and enrichment
 
-The runner applies retries with adaptive backoff for transient failures and API rate limits.
+The runner applies retries with adaptive backoff for transient failures and API rate limits, but it is fail-fast on empty candidate/seed/graph stages (no fallback query rewriting).
 
 ## Deploy
 

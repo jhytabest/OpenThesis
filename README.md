@@ -28,7 +28,9 @@ Production-oriented MVP for thesis-to-paper-graph using:
 - `src/index.ts`: worker fetch routes, queue consumer, workflow class export
 - `src/lib/db.ts`: D1 repository and ownership-safe queries
 - `src/lib/pipeline.ts`: end-to-end run pipeline
-- `src/providers/live.ts`: live provider adapters (OpenAI, Semantic Scholar, OpenAlex, Unpaywall)
+- `src/lib/prompts.ts`: centralized LLM prompts/templates
+- `src/providers/scholarly.ts`: centralized Semantic Scholar + OpenAlex call assembly
+- `src/providers/live.ts`: live provider adapters (OpenAI + Unpaywall, plus scholarly provider wiring)
 - `src/ui/index.ts`: app UI HTML
 - `migrations/0001_init.sql`: D1 schema
 - `fixtures/mock-theses.json`: reusable thesis fixtures for live testing

@@ -1,9 +1,8 @@
 import { zodToJsonSchema } from "zod-to-json-schema";
 import {
   queryPlanSchema,
-  semanticScholarFieldsOfStudy,
-  seedSelectionSchema,
-  triageOutputSchema
+  seedSelectionLlmSchema,
+  seedSelectionSchema
 } from "../lib/zod-schemas.js";
 import { LlmPrompts } from "../lib/prompts.js";
 import type {
@@ -11,8 +10,8 @@ import type {
   Env,
   Providers,
   QueryPlan,
-  SeedSelection,
-  TriageOutput
+  SelectSeedsInput,
+  SeedSelection
 } from "../lib/types.js";
 import type { ZodTypeAny } from "zod";
 import {
@@ -75,21 +74,128 @@ const extractOutputText = (payload: {
   throw new Error("OpenAI response did not return JSON text");
 };
 
+type OpenAiPromptConfig = {
+  id: string;
+  version?: string;
+};
+
+const formatIndexedCandidates = (candidates: CandidatePaper[]): string =>
+  JSON.stringify(
+    candidates.map((candidate, candidateIndex) => ({
+      candidate_index: candidateIndex,
+      paper_id: candidate.paperId,
+      title: candidate.title,
+      abstract: candidate.abstract ?? null,
+      year: candidate.year ?? null,
+      citation_count: candidate.citationCount ?? null,
+      fields_of_study: candidate.fieldsOfStudy
+    }))
+  );
+
+const mapSeedSelectionByIndexToPaperIds = (
+  llmOutput: {
+    outcome: "selected" | "retry_query";
+    candidate_indices: number[];
+    revised_query: string | null;
+  },
+  candidates: CandidatePaper[]
+): SeedSelection => {
+  if (llmOutput.outcome === "retry_query") {
+    if (llmOutput.candidate_indices.length > 0) {
+      throw new Error("seed_selection retry_query must set candidate_indices to an empty array");
+    }
+    const revisedQuery = llmOutput.revised_query?.trim() ?? "";
+    if (revisedQuery.length < 5) {
+      throw new Error("seed_selection retry_query must include revised_query (min length 5)");
+    }
+    return seedSelectionSchema.parse({
+      outcome: "retry_query",
+      revised_query: revisedQuery
+    });
+  }
+
+  if (llmOutput.revised_query !== null) {
+    throw new Error("seed_selection selected outcome must set revised_query to null");
+  }
+  const indices = llmOutput.candidate_indices;
+  if (indices.length < 3 || indices.length > 10) {
+    throw new Error("seed_selection selected outcome must include 3 to 10 candidate_indices");
+  }
+  const seen = new Set<number>();
+  const paperIds = indices.map((candidateIndex) => {
+    if (candidateIndex < 0 || candidateIndex >= candidates.length) {
+      throw new Error(
+        `seed_selection candidate_index ${candidateIndex} is out of range for ${candidates.length} candidates`
+      );
+    }
+    if (seen.has(candidateIndex)) {
+      throw new Error(`seed_selection duplicated candidate_index ${candidateIndex}`);
+    }
+    seen.add(candidateIndex);
+    return candidates[candidateIndex].paperId;
+  });
+
+  return seedSelectionSchema.parse({
+    outcome: "selected",
+    paper_ids: paperIds
+  });
+};
+
+const resolvePromptConfig = (
+  id: string | undefined,
+  version: string | undefined,
+  idEnvVar: string
+): OpenAiPromptConfig => {
+  const normalizedId = id?.trim();
+  if (!normalizedId) {
+    throw new Error(`${idEnvVar} is required in live mode`);
+  }
+  const normalizedVersion = version?.trim();
+  return normalizedVersion
+    ? { id: normalizedId, version: normalizedVersion }
+    : { id: normalizedId };
+};
+
 const buildLiveReasoningProvider = (env: Env) => {
   const apiKey = env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is required in live mode");
   }
 
-  const model = env.OPENAI_MODEL ?? "gpt-5-nano";
+  const queryPlanPrompt = resolvePromptConfig(
+    env.OPENAI_PROMPT_ID_QUERY_PLAN,
+    env.OPENAI_PROMPT_VERSION_QUERY_PLAN,
+    "OPENAI_PROMPT_ID_QUERY_PLAN"
+  );
+  const seedSelectionPrompt = resolvePromptConfig(
+    env.OPENAI_PROMPT_ID_SEED_SELECTION,
+    env.OPENAI_PROMPT_VERSION_SEED_SELECTION,
+    "OPENAI_PROMPT_ID_SEED_SELECTION"
+  );
 
   const runStructuredPrompt = async <T>(input: {
     name: string;
     schema: Record<string, unknown>;
-    system: string;
     user: string;
+    prompt: OpenAiPromptConfig;
     parse: (value: unknown) => T;
   }): Promise<T> => {
+    const requestBody: Record<string, unknown> = {
+      prompt: input.prompt.version
+        ? { id: input.prompt.id, version: input.prompt.version }
+        : { id: input.prompt.id },
+      input: input.user
+    };
+
+    requestBody.text = {
+      format: {
+        type: "json_schema",
+        strict: true,
+        name: input.name,
+        schema: input.schema
+      }
+    };
+
     const payload = await fetchJson<{
       output_text?: string;
       output?: Array<{ content?: Array<{ type?: string; text?: string }> }>;
@@ -101,27 +207,7 @@ const buildLiveReasoningProvider = (env: Env) => {
           authorization: `Bearer ${apiKey}`,
           "content-type": "application/json"
         },
-        body: JSON.stringify({
-          model,
-          input: [
-            {
-              role: "system",
-              content: [{ type: "input_text", text: input.system }]
-            },
-            {
-              role: "user",
-              content: [{ type: "input_text", text: input.user }]
-            }
-          ],
-          text: {
-            format: {
-              type: "json_schema",
-              strict: true,
-              name: input.name,
-              schema: input.schema
-            }
-          }
-        })
+        body: JSON.stringify(requestBody)
       }
     );
 
@@ -134,40 +220,28 @@ const buildLiveReasoningProvider = (env: Env) => {
       return runStructuredPrompt({
         name: "query_plan",
         schema: openAiStrictSchema(queryPlanSchema, "query_plan"),
-        system: LlmPrompts.queryPlanSystem(semanticScholarFieldsOfStudy),
         user: LlmPrompts.queryPlanUser(thesisText),
+        prompt: queryPlanPrompt,
         parse: (value) => queryPlanSchema.parse(value)
       });
     },
 
-    async triageCandidates(
-      thesisText: string,
-      candidates: CandidatePaper[]
-    ): Promise<TriageOutput> {
-      return runStructuredPrompt({
-        name: "triage_output",
-        schema: openAiStrictSchema(triageOutputSchema, "triage_output"),
-        system: LlmPrompts.triageSystem,
-        user: LlmPrompts.triageUser(thesisText, JSON.stringify(candidates)),
-        parse: (value) => triageOutputSchema.parse(value)
-      });
-    },
-
-    async selectSeeds(
-      thesisText: string,
-      candidates: CandidatePaper[],
-      triage: TriageOutput
-    ): Promise<SeedSelection> {
+    async selectSeeds(input: SelectSeedsInput): Promise<SeedSelection> {
       return runStructuredPrompt({
         name: "seed_selection",
-        schema: openAiStrictSchema(seedSelectionSchema, "seed_selection"),
-        system: LlmPrompts.seedSelectionSystem,
-        user: LlmPrompts.seedSelectionUser(
-          thesisText,
-          JSON.stringify(candidates),
-          JSON.stringify(triage)
-        ),
-        parse: (value) => seedSelectionSchema.parse(value)
+        schema: openAiStrictSchema(seedSelectionLlmSchema, "seed_selection"),
+        user: LlmPrompts.seedSelectionUser({
+          thesisTitle: input.thesisTitle,
+          thesisSummary: input.thesisSummary,
+          candidatesJson: formatIndexedCandidates(input.candidates),
+          queryHistoryJson: JSON.stringify(input.queryHistory, null, 2),
+          previousAttemptsJson: JSON.stringify(input.previousAttempts, null, 2),
+        }),
+        prompt: seedSelectionPrompt,
+        parse: (value) => {
+          const parsed = seedSelectionLlmSchema.parse(value);
+          return mapSeedSelectionByIndexToPaperIds(parsed, input.candidates);
+        }
       });
     }
   };

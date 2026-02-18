@@ -14,7 +14,7 @@ Production-oriented MVP for thesis-to-paper-graph using:
 - Thesis intake and asynchronous run creation
 - Pipeline with:
   - OpenAI Responses API strict-JSON steps
-  - Semantic Scholar search + recommendations
+  - Semantic Scholar search
   - OpenAlex canonicalization + graph expansion
   - Relevance scoring + tiering
   - Unpaywall PDF enrichment
@@ -81,6 +81,7 @@ Run the real external workflow locally (no mock provider) with thesis fixtures:
 ```bash
 cp .env.example .env
 # fill OPENAI_API_KEY, SEMANTIC_SCHOLAR_API_KEY, OPENALEX_API_KEY (and optionally UNPAYWALL_EMAIL)
+# required: set OPENAI_PROMPT_ID_QUERY_PLAN / OPENAI_PROMPT_ID_SEED_SELECTION
 npm run debug:live -- --list
 npm run debug:live -- --thesis-id business-ai-pricing
 npm run debug:live:all
@@ -93,7 +94,7 @@ Artifacts are written under `debug-runs/<timestamp>/<thesis-id>/`:
 - `steps.json`: raw outputs per pipeline step
 - `result.json`: summary, scored papers, and enrichment
 
-The runner applies retries with adaptive backoff for transient failures and API rate limits, but it is fail-fast on empty candidate/seed/graph stages (no fallback query rewriting).
+The runner applies retries with adaptive backoff for transient failures and API rate limits, and performs up to 3 query-selection iterations before failing if fewer than 3 seeds are selected.
 
 ## Deploy
 
@@ -107,6 +108,13 @@ wrangler secret put SEMANTIC_SCHOLAR_API_KEY
 wrangler secret put OPENALEX_API_KEY
 wrangler secret put UNPAYWALL_EMAIL
 ```
+
+Prompt configs (non-secret, set as vars) to use saved OpenAI prompts with direct `input` text:
+
+- `OPENAI_PROMPT_ID_QUERY_PLAN`
+- `OPENAI_PROMPT_VERSION_QUERY_PLAN` (optional; omit to use current published version)
+- `OPENAI_PROMPT_ID_SEED_SELECTION`
+- `OPENAI_PROMPT_VERSION_SEED_SELECTION` (optional; omit to use current published version)
 
 2. Deploy (runs remote D1 migrations automatically, then deploys):
 

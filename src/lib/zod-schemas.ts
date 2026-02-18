@@ -29,33 +29,25 @@ export const semanticScholarFieldsOfStudy = [
 const semanticScholarFieldSchema = z.enum(semanticScholarFieldsOfStudy);
 
 export const queryPlanSchema = z.object({
+  thesis_title: z.string().min(5),
+  thesis_summary: z.string().min(30),
   query: z.string().min(5),
-  fields_of_study: z.array(semanticScholarFieldSchema).min(1).max(6),
-  must_terms: z.array(z.string()),
-  must_not_terms: z.array(z.string()),
-  time_horizon: z.object({
-    start_year: z.number().int().min(1900).max(2100).nullable(),
-    end_year: z.number().int().min(1900).max(2100).nullable()
+  fields_of_study: z.array(semanticScholarFieldSchema).min(1).max(6)
+});
+
+export const seedSelectionSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("selected"),
+    paper_ids: z.array(z.string().min(1)).min(3).max(10)
+  }),
+  z.object({
+    outcome: z.literal("retry_query"),
+    revised_query: z.string().min(5)
   })
-});
+]);
 
-export const triageDecisionSchema = z.object({
-  paper_id: z.string().min(1),
-  decision: z.enum(["on_topic", "off_topic", "uncertain"]),
-  confidence: z.number().min(0).max(1),
-  reasons: z.array(z.string()).min(1)
-});
-
-export const triageOutputSchema = z.object({
-  decisions: z.array(triageDecisionSchema)
-});
-
-export const seedSelectionSchema = z.object({
-  seeds: z.array(
-    z.object({
-      paper_id: z.string().min(1),
-      selection_reason: z.string().min(3)
-    })
-  ),
-  coverage_notes: z.string().min(3)
+export const seedSelectionLlmSchema = z.object({
+  outcome: z.enum(["selected", "retry_query"]),
+  candidate_indices: z.array(z.number().int().min(0)),
+  revised_query: z.string().nullable()
 });

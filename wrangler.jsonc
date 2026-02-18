@@ -45,8 +45,5 @@
   ],
   "observability": {
     "enabled": true
-  },
-  "vars": {
-    "OPENAI_MODEL": "gpt-5-nano"
   }
 }

@@ -95,18 +95,10 @@ const sanitizePlainSearchQuery = (value: string): string =>
     .replace(/\s+/g, " ")
     .trim();
 
-const buildSearchQuery = (query: string, mustTerms?: string[]): string => {
-  const tokenize = (value: string): string[] =>
-    sanitizePlainSearchQuery(value)
-      .split(" ")
-      .filter((token) => token.length > 1);
-
-  const tokens: string[] = [];
-  for (const term of mustTerms ?? []) {
-    tokens.push(...tokenize(term));
-  }
-  tokens.push(...tokenize(query));
-
+const buildSearchQuery = (query: string): string => {
+  const tokens = sanitizePlainSearchQuery(query)
+    .split(" ")
+    .filter((token) => token.length > 1);
   const deduped: string[] = [];
   const seen = new Set<string>();
   for (const token of tokens) {
@@ -120,29 +112,7 @@ const buildSearchQuery = (query: string, mustTerms?: string[]): string => {
       break;
     }
   }
-
   return deduped.join(" ");
-};
-
-const toYearFilter = (timeHorizon?: {
-  start_year: number | null;
-  end_year: number | null;
-}): string | null => {
-  if (!timeHorizon) {
-    return null;
-  }
-  const start = timeHorizon.start_year;
-  const end = timeHorizon.end_year;
-  if (start && end) {
-    return `${start}-${end}`;
-  }
-  if (start && !end) {
-    return `${start}-`;
-  }
-  if (!start && end) {
-    return `-${end}`;
-  }
-  return null;
 };
 
 const mapSemanticScholarResponse = (payload: {
@@ -199,14 +169,8 @@ export const buildLiveSemanticScholarProvider = (
   ].join(",");
 
   return {
-    async search(
-      query: string,
-      fieldsOfStudy: string[],
-      limit: number,
-      timeHorizon?: { start_year: number | null; end_year: number | null },
-      mustTerms?: string[]
-    ): Promise<CandidatePaper[]> {
-      const searchQuery = buildSearchQuery(query, mustTerms);
+    async search(query: string, fieldsOfStudy: string[], limit: number): Promise<CandidatePaper[]> {
+      const searchQuery = buildSearchQuery(query);
       if (!searchQuery) {
         throw new Error("Semantic Scholar query is empty after sanitization");
       }
@@ -222,10 +186,6 @@ export const buildLiveSemanticScholarProvider = (
       if (normalizedFields.length > 0) {
         url.searchParams.set("fieldsOfStudy", normalizedFields.join(","));
       }
-      const yearFilter = toYearFilter(timeHorizon);
-      if (yearFilter) {
-        url.searchParams.set("year", yearFilter);
-      }
 
       const payload = await fetchJson<{ data?: SemanticScholarPaper[] }>(url.toString(), {
         method: "GET",
@@ -233,32 +193,6 @@ export const buildLiveSemanticScholarProvider = (
       });
 
       return mapSemanticScholarResponse(payload);
-    },
-
-    async recommend(
-      positivePaperIds: string[],
-      negativePaperIds: string[],
-      limit: number
-    ): Promise<CandidatePaper[]> {
-      if (positivePaperIds.length === 0) {
-        throw new Error("semantic_recommendations requires at least one positivePaperId");
-      }
-
-      const payload = await fetchJson<{ recommendedPapers?: SemanticScholarPaper[] }>(
-        `${baseUrl}/recommendations/v1/papers`,
-        {
-          method: "POST",
-          headers: withHeaders({ "content-type": "application/json" }),
-          body: JSON.stringify({
-            positivePaperIds,
-            negativePaperIds,
-            limit,
-            fields
-          })
-        }
-      );
-
-      return mapSemanticScholarResponse({ data: payload.recommendedPapers });
     }
   };
 };

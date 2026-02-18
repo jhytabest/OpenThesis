@@ -1,11 +1,20 @@
 import { Db } from "./db.js";
 import { scorePaper } from "./scoring.js";
-import type { CanonicalPaper, Env, GraphEdge } from "./types.js";
+import type {
+  CanonicalPaper,
+  Env,
+  GraphEdge,
+  SeedSelectionAttemptHistory,
+  SeedSelectionQueryHistoryEntry
+} from "./types.js";
 import { buildProviders } from "../providers/index.js";
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const SEMANTIC_SCHOLAR_RATE_LIMIT_KEY = "semantic_scholar_api";
 const SEMANTIC_SCHOLAR_MIN_INTERVAL_MS = 1000;
+const MIN_REQUIRED_SEEDS = 3;
+const MAX_SEED_SELECTION_ATTEMPTS = 3;
+const SELECTION_WINDOW = 30;
 
 async function withRetries<T>(
   fn: () => Promise<T>,
@@ -133,115 +142,150 @@ export async function processRun(env: Env, runId: string): Promise<void> {
       detail: queryPlan
     });
 
-    const initialCandidates = await runStep(env, runId, "semantic_search", () =>
-      withRetries(
-        async () => {
-          await acquireGlobalRateLimitSlot(
-            env,
-            SEMANTIC_SCHOLAR_RATE_LIMIT_KEY,
-            SEMANTIC_SCHOLAR_MIN_INTERVAL_MS
-          );
-          return providers.semanticScholar.search(
-            queryPlan.query,
-            queryPlan.fields_of_study,
-            25,
-            queryPlan.time_horizon,
-            queryPlan.must_terms
-          );
-        },
-        3,
-        (attempt, error) => console.warn("semantic_search retry", { runId, attempt, error })
-      )
-    );
+    let activeQuery = queryPlan.query;
+    let selectedSeedCandidates: Awaited<ReturnType<typeof providers.semanticScholar.search>> = [];
+    let seedSelection: Awaited<ReturnType<typeof providers.reasoning.selectSeeds>> | null = null;
+    const queryHistory: SeedSelectionQueryHistoryEntry[] = [];
+    const selectionHistory: SeedSelectionAttemptHistory[] = [];
 
-    if (initialCandidates.length === 0) {
-      throw new Error("semantic_search returned 0 candidates");
-    }
+    for (let attempt = 1; attempt <= MAX_SEED_SELECTION_ATTEMPTS; attempt += 1) {
+      const searchResults = await runStep(env, runId, `semantic_search_attempt_${attempt}`, () =>
+        withRetries(
+          async () => {
+            await acquireGlobalRateLimitSlot(
+              env,
+              SEMANTIC_SCHOLAR_RATE_LIMIT_KEY,
+              SEMANTIC_SCHOLAR_MIN_INTERVAL_MS
+            );
+            return providers.semanticScholar.search(
+              activeQuery,
+              queryPlan.fields_of_study,
+              SELECTION_WINDOW
+            );
+          },
+          3,
+          (retryAttempt, error) =>
+            console.warn("semantic_search retry", { runId, attempt, retryAttempt, error })
+        )
+      );
+      const rankedCandidates = dedupeBy(searchResults, (paper) => paper.paperId).slice(
+        0,
+        SELECTION_WINDOW
+      );
+      const topHits = rankedCandidates.slice(0, 5).map((candidate, candidateIndex) => ({
+        candidate_index: candidateIndex,
+        paper_id: candidate.paperId,
+        title: candidate.title,
+        year: candidate.year ?? null,
+        citation_count: candidate.citationCount ?? null,
+        fields_of_study: candidate.fieldsOfStudy
+      }));
+      const searchSnapshot = {
+        query: activeQuery,
+        fields_of_study: queryPlan.fields_of_study,
+        total_hits: searchResults.length,
+        top_hits: topHits
+      };
+      const queryHistoryEntry: SeedSelectionQueryHistoryEntry = {
+        query_index: queryHistory.length,
+        source: attempt === 1 ? "query_plan" : "selection_retry",
+        search: searchSnapshot
+      };
+      queryHistory.push(queryHistoryEntry);
 
-    const triage = await runStep(env, runId, "llm_triage", () =>
-      withRetries(
-        () => providers.reasoning.triageCandidates(thesis.text, initialCandidates),
-        3,
-        (attempt, error) => console.warn("llm_triage retry", { runId, attempt, error })
-      )
-    );
-
-    for (const decision of triage.decisions) {
       await Db.insertEvidence(env.ALEXCLAW_DB, {
         runId,
-        entityType: "semantic_scholar_paper",
-        entityId: decision.paper_id,
-        source: "openai.triage",
-        detail: decision
-      });
-    }
-
-    const positiveIds = triage.decisions
-      .filter((decision) => decision.decision === "on_topic")
-      .map((decision) => decision.paper_id);
-
-    const negativeIds = triage.decisions
-      .filter((decision) => decision.decision === "off_topic")
-      .map((decision) => decision.paper_id);
-
-    if (positiveIds.length === 0) {
-      throw new Error("llm_triage returned 0 on-topic papers");
-    }
-
-    const recommendationCandidates = await runStep(env, runId, "semantic_recommendations", () =>
-      withRetries(
-        async () => {
-          await acquireGlobalRateLimitSlot(
-            env,
-            SEMANTIC_SCHOLAR_RATE_LIMIT_KEY,
-            SEMANTIC_SCHOLAR_MIN_INTERVAL_MS
-          );
-          return providers.semanticScholar.recommend(positiveIds, negativeIds, 25);
-        },
-        3,
-        (attempt, error) => console.warn("semantic_recommendations retry", {
-          runId,
+        entityType: "run",
+        entityId: runId,
+        source: "semantic_scholar.search",
+        detail: {
           attempt,
-          error
-        })
-      )
-    );
+          query: activeQuery,
+          totalResults: searchResults.length,
+          selectionCandidates: rankedCandidates.length
+        }
+      });
 
-    const mergedCandidates = dedupeBy(
-      [...initialCandidates, ...recommendationCandidates],
-      (paper) => paper.paperId
-    );
+      const attemptSelection = await runStep(env, runId, `llm_select_seeds_attempt_${attempt}`, () =>
+        withRetries(
+          () =>
+            providers.reasoning.selectSeeds({
+              thesisTitle: queryPlan.thesis_title,
+              thesisSummary: queryPlan.thesis_summary,
+              candidates: rankedCandidates,
+              queryHistory,
+              previousAttempts: selectionHistory
+            }),
+          3,
+          (retryAttempt, error) =>
+            console.warn("llm_select_seeds retry", { runId, attempt, retryAttempt, error })
+        )
+      );
 
-    if (mergedCandidates.length === 0) {
-      throw new Error("semantic search + recommendations produced 0 merged candidates");
+      let selectedCandidateIndices: number[] = [];
+      seedSelection = attemptSelection;
+      if (attemptSelection.outcome === "selected") {
+        const candidateById = new Map(rankedCandidates.map((candidate) => [candidate.paperId, candidate]));
+        const candidateIndexById = new Map(
+          rankedCandidates.map((candidate, candidateIndex) => [candidate.paperId, candidateIndex])
+        );
+        selectedSeedCandidates = dedupeBy(
+          attemptSelection.paper_ids
+            .map((paperId) => candidateById.get(paperId))
+            .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate)),
+          (candidate) => candidate.paperId
+        );
+        selectedCandidateIndices = attemptSelection.paper_ids
+          .map((paperId) => candidateIndexById.get(paperId))
+          .filter((candidateIndex): candidateIndex is number => candidateIndex !== undefined);
+        selectionHistory.push({
+          attempt,
+          query_index: queryHistoryEntry.query_index,
+          decision: {
+            outcome: "selected",
+            selected_candidate_indices: selectedCandidateIndices,
+            revised_query: null
+          }
+        });
+        if (selectedSeedCandidates.length >= MIN_REQUIRED_SEEDS) {
+          break;
+        }
+      } else {
+        selectionHistory.push({
+          attempt,
+          query_index: queryHistoryEntry.query_index,
+          decision: {
+            outcome: "retry_query",
+            selected_candidate_indices: [],
+            revised_query: attemptSelection.revised_query
+          }
+        });
+        activeQuery = attemptSelection.revised_query;
+      }
     }
 
-    const seedSelection = await runStep(env, runId, "llm_select_seeds", () =>
-      withRetries(
-        () => providers.reasoning.selectSeeds(thesis.text, mergedCandidates, triage),
-        3,
-        (attempt, error) => console.warn("llm_select_seeds retry", { runId, attempt, error })
-      )
-    );
+    if (!seedSelection) {
+      throw new Error("llm_select_seeds did not return a selection payload");
+    }
 
     await Db.insertEvidence(env.ALEXCLAW_DB, {
       runId,
       entityType: "run",
       entityId: runId,
       source: "openai.seed_selection",
-      detail: seedSelection
+      detail: {
+        ...seedSelection,
+        selectedCount: selectedSeedCandidates.length,
+        finalQuery: activeQuery,
+        queryHistory,
+        history: selectionHistory
+      }
     });
 
-    const candidateById = new Map(mergedCandidates.map((candidate) => [candidate.paperId, candidate]));
-    const selectedSeedCandidates = dedupeBy(
-      seedSelection.seeds
-        .map((seed) => candidateById.get(seed.paper_id))
-        .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate)),
-      (candidate) => candidate.paperId
-    );
-
-    if (selectedSeedCandidates.length === 0) {
-      throw new Error("llm_select_seeds did not map to any candidate paper IDs");
+    if (seedSelection.outcome !== "selected" || selectedSeedCandidates.length < MIN_REQUIRED_SEEDS) {
+      throw new Error(
+        `llm_select_seeds did not produce at least ${MIN_REQUIRED_SEEDS} seeds after ${MAX_SEED_SELECTION_ATTEMPTS} attempts`
+      );
     }
     const seedsToResolve = selectedSeedCandidates;
 

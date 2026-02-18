@@ -133,6 +133,30 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
 <script>
   const state = { user: null, theses: [], runs: [], activeRun: null };
   const byId = (id) => document.getElementById(id);
+  const clearNode = (node) => node.replaceChildren();
+  const cell = (text) => {
+    const td = document.createElement('td');
+    td.textContent = text;
+    return td;
+  };
+  const badge = (text) => {
+    const span = document.createElement('span');
+    span.className = 'badge';
+    span.textContent = text;
+    return span;
+  };
+  const safeExternalHref = (value) => {
+    if (!value) return null;
+    try {
+      const url = new URL(value, window.location.origin);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        return null;
+      }
+      return url.toString();
+    } catch {
+      return null;
+    }
+  };
 
   async function api(path, options = {}) {
     const response = await fetch(path, {
@@ -167,15 +191,36 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
 
     const auth = byId('auth');
     if (!state.user) {
-      auth.innerHTML = '<div class="actions"><a href="/auth/google"><button>Sign in with Google</button></a></div>';
+      clearNode(auth);
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+      const link = document.createElement('a');
+      link.href = '/auth/google';
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = 'Sign in with Google';
+      link.append(button);
+      actions.append(link);
+      auth.append(actions);
       byId('submitPanel').hidden = true;
       byId('runsPanel').hidden = true;
       byId('detailsPanel').hidden = true;
       return;
     }
 
-    auth.innerHTML = '<div class="actions"><span class="badge">' + state.user.email + '</span><button id="logout" class="danger">Logout</button></div>';
-    byId('logout').onclick = async () => {
+    clearNode(auth);
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    actions.append(badge(state.user.email));
+    const logoutButton = document.createElement('button');
+    logoutButton.id = 'logout';
+    logoutButton.type = 'button';
+    logoutButton.className = 'danger';
+    logoutButton.textContent = 'Logout';
+    actions.append(logoutButton);
+    auth.append(actions);
+
+    logoutButton.onclick = async () => {
       await api('/api/auth/logout', { method: 'POST' });
       await boot();
     };
@@ -190,7 +235,7 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
     const data = await api('/api/theses');
     state.theses = data.theses;
     const select = byId('thesisSelect');
-    select.innerHTML = '';
+    clearNode(select);
     state.theses.forEach((thesis) => {
       const option = document.createElement('option');
       option.value = thesis.id;
@@ -203,14 +248,29 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
     const data = await api('/api/runs');
     state.runs = data.runs;
     const body = byId('runsBody');
-    body.innerHTML = '';
+    clearNode(body);
     state.runs.forEach((run) => {
       const row = document.createElement('tr');
-      row.innerHTML =
-        '<td><code>' + run.id.slice(0, 8) + '</code></td>' +
-        '<td><span class="badge">' + run.status + '</span></td>' +
-        '<td>' + new Date(run.updatedAt).toLocaleString() + '</td>' +
-        '<td><button data-run="' + run.id + '" class="secondary">Inspect</button></td>';
+      const runCell = document.createElement('td');
+      const code = document.createElement('code');
+      code.textContent = run.id.slice(0, 8);
+      runCell.append(code);
+      row.append(runCell);
+
+      const statusCell = document.createElement('td');
+      statusCell.append(badge(run.status));
+      row.append(statusCell);
+
+      row.append(cell(new Date(run.updatedAt).toLocaleString()));
+
+      const actionCell = document.createElement('td');
+      const inspectButton = document.createElement('button');
+      inspectButton.type = 'button';
+      inspectButton.className = 'secondary';
+      inspectButton.dataset.run = run.id;
+      inspectButton.textContent = 'Inspect';
+      actionCell.append(inspectButton);
+      row.append(actionCell);
       body.append(row);
     });
 
@@ -235,31 +295,51 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
     byId('detailsMeta').textContent = 'Status: ' + run.run.status + ' | Steps: ' + run.run.steps.length;
 
     const papersBody = byId('papersBody');
-    papersBody.innerHTML = '';
+    clearNode(papersBody);
     papers.papers.slice(0, 50).forEach((paper) => {
       const row = document.createElement('tr');
-      row.innerHTML =
-        '<td>' + paper.title + '</td>' +
-        '<td><span class="badge">' + paper.tier + '</span></td>' +
-        '<td>' + paper.score.total.toFixed(3) + '</td>' +
-        '<td>' + (paper.citationCount || 0) + '</td>' +
-        '<td>' + (paper.access.pdfUrl ? '<a href="' + paper.access.pdfUrl + '" target="_blank" rel="noreferrer">PDF</a>' : '-') + '</td>';
+      row.append(cell(paper.title));
+
+      const tierCell = document.createElement('td');
+      tierCell.append(badge(paper.tier));
+      row.append(tierCell);
+
+      row.append(cell(paper.score.total.toFixed(3)));
+      row.append(cell(String(paper.citationCount || 0)));
+
+      const linkCell = document.createElement('td');
+      const safePdfUrl = safeExternalHref(paper.access.pdfUrl);
+      if (safePdfUrl) {
+        const link = document.createElement('a');
+        link.href = safePdfUrl;
+        link.target = '_blank';
+        link.rel = 'noreferrer';
+        link.textContent = 'PDF';
+        linkCell.append(link);
+      } else {
+        linkCell.textContent = '-';
+      }
+      row.append(linkCell);
       papersBody.append(row);
     });
 
     const authorsBody = byId('authorsBody');
-    authorsBody.innerHTML = '';
+    clearNode(authorsBody);
     authors.authors.slice(0, 50).forEach((author) => {
       const row = document.createElement('tr');
-      row.innerHTML = '<td>' + author.name + '</td><td>' + author.paperCount + '</td>';
+      row.append(cell(author.name));
+      row.append(cell(String(author.paperCount)));
       authorsBody.append(row);
     });
 
     const edgesBody = byId('edgesBody');
-    edgesBody.innerHTML = '';
+    clearNode(edgesBody);
     edges.edges.slice(0, 50).forEach((edge) => {
       const row = document.createElement('tr');
-      row.innerHTML = '<td>' + edge.sourceTitle + '</td><td>' + edge.type + '</td><td>' + edge.targetTitle + '</td><td>' + edge.weight.toFixed(2) + '</td>';
+      row.append(cell(edge.sourceTitle));
+      row.append(cell(edge.type));
+      row.append(cell(edge.targetTitle));
+      row.append(cell(edge.weight.toFixed(2)));
       edgesBody.append(row);
     });
   }

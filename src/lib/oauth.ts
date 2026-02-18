@@ -45,6 +45,7 @@ const exchangeGoogleCode = async (
 const fetchGoogleProfile = async (accessToken: string): Promise<{
   sub?: string;
   email?: string;
+  email_verified?: boolean;
   name?: string;
 }> => {
   const response = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {

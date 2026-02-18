@@ -18,7 +18,12 @@ const parseCookies = (cookieHeader: string | null | undefined): Record<string, s
     if (!rawKey) {
       continue;
     }
-    output[rawKey] = decodeURIComponent(rawValue.join("=") ?? "");
+    const encodedValue = rawValue.join("=") ?? "";
+    try {
+      output[rawKey] = decodeURIComponent(encodedValue);
+    } catch {
+      output[rawKey] = encodedValue;
+    }
   }
   return output;
 };

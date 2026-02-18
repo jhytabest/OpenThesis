@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { Auth } from "./lib/auth.js";
 import { Db } from "./lib/db.js";
 import { OAuth } from "./lib/oauth.js";
@@ -19,11 +19,57 @@ const json = (data: unknown, status = 200): Response =>
     headers: { "content-type": "application/json" }
   });
 
+const MAX_THESIS_TITLE_LENGTH = 200;
+const MAX_THESIS_TEXT_LENGTH = 50_000;
+const THESIS_CREATE_MIN_INTERVAL_MS = 3_000;
+const RUN_CREATE_MIN_INTERVAL_MS = 15_000;
+
+const safeJsonParse = <T>(value: string, fallback: T): T => {
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+};
+
+const readAuthToken = (authorizationHeader: string | undefined): string | null => {
+  if (!authorizationHeader) {
+    return null;
+  }
+  if (authorizationHeader.toLowerCase().startsWith("bearer ")) {
+    return authorizationHeader.slice("bearer ".length).trim();
+  }
+  return authorizationHeader.trim();
+};
+
+const isInternalRequestAuthorized = (c: Context<AppBindings>): boolean => {
+  const expectedToken = c.env.INTERNAL_API_TOKEN?.trim();
+  if (!expectedToken) {
+    return false;
+  }
+  const headerToken = readAuthToken(c.req.header("authorization"));
+  const directToken = c.req.header("x-internal-token")?.trim() ?? null;
+  return headerToken === expectedToken || directToken === expectedToken;
+};
+
+const assertInternalRequest = (c: Context<AppBindings>): Response | null =>
+  isInternalRequestAuthorized(c) ? null : new Response("Not Found", { status: 404 });
+
 app.get("/", (c) => c.html(renderHomeHtml()));
 
-app.get("/internal/health", () => json({ ok: true, timestamp: new Date().toISOString() }));
+app.get("/internal/health", (c) => {
+  const denied = assertInternalRequest(c);
+  if (denied) {
+    return denied;
+  }
+  return json({ ok: true, timestamp: new Date().toISOString() });
+});
 
 app.get("/internal/metrics", async (c) => {
+  const denied = assertInternalRequest(c);
+  if (denied) {
+    return denied;
+  }
   const runsByStatus = await Db.metricsRunsByStatus(c.env.ALEXCLAW_DB);
   return json({ runsByStatus });
 });
@@ -74,6 +120,9 @@ app.get("/auth/google/callback", async (c) => {
     if (!profile.sub || !profile.email) {
       return json({ error: "Google profile missing required fields" }, 400);
     }
+    if (profile.email_verified !== true) {
+      return json({ error: "Google account email must be verified" }, 403);
+    }
 
     const user = await Db.createOrUpdateGoogleUser(c.env.ALEXCLAW_DB, {
       googleSub: profile.sub,
@@ -94,7 +143,11 @@ app.get("/auth/google/callback", async (c) => {
     );
     return c.redirect("/");
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : String(error) }, 500);
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === "EMAIL_ALREADY_IN_USE") {
+      return json({ error: "An account with this email already exists under a different identity" }, 409);
+    }
+    return json({ error: message }, 500);
   }
 });
 
@@ -134,14 +187,34 @@ app.post("/api/theses", async (c) => {
     return json({ error: "Unauthorized" }, 401);
   }
 
+  const createThrottle = await Db.tryAcquireGlobalRateLimitWindow(
+    c.env.ALEXCLAW_DB,
+    `thesis_create:${user.id}`,
+    THESIS_CREATE_MIN_INTERVAL_MS
+  );
+  if (!createThrottle.allowed) {
+    const response = json(
+      { error: "Too many thesis create requests", retryAfterMs: createThrottle.retryAfterMs },
+      429
+    );
+    response.headers.set("Retry-After", String(Math.max(1, Math.ceil(createThrottle.retryAfterMs / 1000))));
+    return response;
+  }
+
   const bodyRaw = await c.req.json().catch(() => ({}));
   const body = bodyRaw as { title?: string; text?: string };
   const text = body.text?.trim();
   if (!text || text.length < 30) {
     return json({ error: "text is required and must be at least 30 characters" }, 400);
   }
+  if (text.length > MAX_THESIS_TEXT_LENGTH) {
+    return json({ error: `text must be at most ${MAX_THESIS_TEXT_LENGTH} characters` }, 413);
+  }
 
   const title = body.title?.trim() || "Untitled thesis";
+  if (title.length > MAX_THESIS_TITLE_LENGTH) {
+    return json({ error: `title must be at most ${MAX_THESIS_TITLE_LENGTH} characters` }, 400);
+  }
   const thesis = await Db.createThesis(c.env.ALEXCLAW_DB, {
     userId: user.id,
     title,
@@ -164,6 +237,17 @@ app.post("/api/theses/:thesisId/runs", async (c) => {
   const user = await Auth.resolveUser(c);
   if (!user) {
     return json({ error: "Unauthorized" }, 401);
+  }
+
+  const runThrottle = await Db.tryAcquireGlobalRateLimitWindow(
+    c.env.ALEXCLAW_DB,
+    `run_create:${user.id}`,
+    RUN_CREATE_MIN_INTERVAL_MS
+  );
+  if (!runThrottle.allowed) {
+    const response = json({ error: "Too many run requests", retryAfterMs: runThrottle.retryAfterMs }, 429);
+    response.headers.set("Retry-After", String(Math.max(1, Math.ceil(runThrottle.retryAfterMs / 1000))));
+    return response;
   }
 
   const thesisId = c.req.param("thesisId");
@@ -243,7 +327,7 @@ app.get("/api/runs/:runId", async (c) => {
         startedAt: step.started_at,
         finishedAt: step.finished_at,
         error: step.error,
-        payload: step.payload_json ? JSON.parse(step.payload_json) : null
+        payload: step.payload_json ? safeJsonParse(step.payload_json, null) : null
       }))
     }
   });
@@ -272,7 +356,7 @@ app.get("/api/runs/:runId/papers", async (c) => {
       year: paper.year,
       doi: paper.doi,
       citationCount: paper.citation_count,
-      fieldsOfStudy: JSON.parse(paper.fields_of_study_json),
+      fieldsOfStudy: safeJsonParse<string[]>(paper.fields_of_study_json, []),
       score: {
         lexical: paper.lexical_score,
         graph: paper.graph_score,
@@ -335,7 +419,7 @@ app.get("/api/runs/:runId/edges", async (c) => {
       targetTitle: edge.target_title,
       type: edge.edge_type,
       weight: edge.weight,
-      evidence: JSON.parse(edge.evidence_json)
+      evidence: safeJsonParse(edge.evidence_json, null)
     }))
   });
 });
@@ -362,7 +446,7 @@ app.get("/api/runs/:runId/evidence", async (c) => {
       entityType: entry.entity_type,
       entityId: entry.entity_id,
       source: entry.source,
-      detail: JSON.parse(entry.detail_json),
+      detail: safeJsonParse(entry.detail_json, null),
       createdAt: entry.created_at
     }))
   });
@@ -396,10 +480,14 @@ export default {
   ): Promise<void> {
     for (const message of batch.messages) {
       try {
-        const payload =
-          typeof message.body === "string" ? JSON.parse(message.body) : (message.body as { runId?: string });
+        let payload: { runId?: string } | null = null;
+        if (typeof message.body === "string") {
+          payload = safeJsonParse<{ runId?: string } | null>(message.body, null);
+        } else if (message.body && typeof message.body === "object") {
+          payload = message.body as { runId?: string };
+        }
         const runId = payload?.runId;
-        if (!runId) {
+        if (!runId || typeof runId !== "string") {
           message.ack();
           continue;
         }

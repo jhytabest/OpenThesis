@@ -104,6 +104,7 @@ The runner applies retries with adaptive backoff for transient failures and API 
 wrangler secret put OPENAI_API_KEY
 wrangler secret put GOOGLE_CLIENT_ID
 wrangler secret put GOOGLE_CLIENT_SECRET
+wrangler secret put INTERNAL_API_TOKEN
 wrangler secret put SEMANTIC_SCHOLAR_API_KEY
 wrangler secret put OPENALEX_API_KEY
 wrangler secret put UNPAYWALL_EMAIL
@@ -154,8 +155,8 @@ Core:
 
 Ops:
 
-- `GET /internal/health`
-- `GET /internal/metrics`
+- `GET /internal/health` (requires `Authorization: Bearer $INTERNAL_API_TOKEN` or `x-internal-token`)
+- `GET /internal/metrics` (requires `Authorization: Bearer $INTERNAL_API_TOKEN` or `x-internal-token`)
 
 ## Verification
 

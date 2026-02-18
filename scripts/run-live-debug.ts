@@ -141,6 +141,21 @@ const redactHeaders = (headers: Headers): Record<string, string> => {
   return output;
 };
 
+const redactUrl = (value: string): string => {
+  try {
+    const url = new URL(value);
+    for (const [key] of url.searchParams.entries()) {
+      const lower = key.toLowerCase();
+      if (lower.includes("key") || lower.includes("token") || lower.includes("secret")) {
+        url.searchParams.set(key, "REDACTED");
+      }
+    }
+    return url.toString();
+  } catch {
+    return value;
+  }
+};
+
 const createHttpLogger = (runDir: string): { install(): void; restore(): void } => {
   const logPath = path.join(runDir, "http.log.ndjson");
   const originalFetch = globalThis.fetch;
@@ -164,7 +179,7 @@ const createHttpLogger = (runDir: string): { install(): void; restore(): void } 
         callId,
         timestamp: now(),
         method: request.method,
-        url: request.url,
+        url: redactUrl(request.url),
         requestHeaders: redactHeaders(request.headers),
         requestBody,
         responseStatus: response.status,
@@ -178,7 +193,7 @@ const createHttpLogger = (runDir: string): { install(): void; restore(): void } 
         callId,
         timestamp: now(),
         method: request.method,
-        url: request.url,
+        url: redactUrl(request.url),
         requestHeaders: redactHeaders(request.headers),
         requestBody,
         error: error instanceof Error ? error.message : String(error),

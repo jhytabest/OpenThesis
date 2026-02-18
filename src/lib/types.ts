@@ -71,6 +71,7 @@ export interface Env {
   UNPAYWALL_EMAIL?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  INTERNAL_API_TOKEN?: string;
 }
 
 export type QueryPlan = z.infer<typeof queryPlanSchema>;

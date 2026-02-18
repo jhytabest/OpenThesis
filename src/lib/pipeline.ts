@@ -113,7 +113,7 @@ export async function processRun(env: Env, runId: string): Promise<void> {
   }
 
   const claimed = await Db.markRunRunningIfQueued(env.ALEXCLAW_DB, runId);
-  if (!claimed && run.status !== "RUNNING") {
+  if (!claimed) {
     return;
   }
 

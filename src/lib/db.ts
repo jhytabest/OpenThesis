@@ -48,13 +48,21 @@ export const Db = {
     );
 
     if (existingBySub) {
-      await run(
-        db,
-        `UPDATE users SET email = ?, name = ? WHERE id = ?`,
-        input.email,
-        input.name,
-        existingBySub.id
-      );
+      try {
+        await run(
+          db,
+          `UPDATE users SET email = ?, name = ? WHERE id = ?`,
+          input.email,
+          input.name,
+          existingBySub.id
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes("UNIQUE constraint failed: users.email")) {
+          throw new Error("EMAIL_ALREADY_IN_USE");
+        }
+        throw error;
+      }
       const user = await first<SessionUser>(
         db,
         `SELECT id, email, name FROM users WHERE id = ?`,
@@ -66,41 +74,24 @@ export const Db = {
       return user;
     }
 
-    const existingByEmail = await first<{ id: string }>(
-      db,
-      `SELECT id FROM users WHERE email = ?`,
-      input.email
-    );
-
-    if (existingByEmail) {
+    const id = crypto.randomUUID();
+    try {
       await run(
         db,
-        `UPDATE users SET google_sub = ?, name = ? WHERE id = ?`,
-        input.googleSub,
+        `INSERT INTO users (id, email, name, google_sub, created_at) VALUES (?, ?, ?, ?, ?)`,
+        id,
+        input.email,
         input.name,
-        existingByEmail.id
+        input.googleSub,
+        nowIso()
       );
-      const user = await first<SessionUser>(
-        db,
-        `SELECT id, email, name FROM users WHERE id = ?`,
-        existingByEmail.id
-      );
-      if (!user) {
-        throw new Error("Failed to load updated email user");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("UNIQUE constraint failed: users.email")) {
+        throw new Error("EMAIL_ALREADY_IN_USE");
       }
-      return user;
+      throw error;
     }
-
-    const id = crypto.randomUUID();
-    await run(
-      db,
-      `INSERT INTO users (id, email, name, google_sub, created_at) VALUES (?, ?, ?, ?, ?)`,
-      id,
-      input.email,
-      input.name,
-      input.googleSub,
-      nowIso()
-    );
 
     return {
       id,
@@ -256,17 +247,14 @@ export const Db = {
   },
 
   async markRunRunningIfQueued(db: D1Database, runId: string): Promise<boolean> {
-    const before = await first<{ status: RunStatus }>(db, `SELECT status FROM runs WHERE id = ?`, runId);
-    if (!before || before.status !== "QUEUED") {
-      return false;
-    }
-    await run(
+    const changes = await runChanges(
       db,
-      `UPDATE runs SET status = 'RUNNING', error = NULL, updated_at = ? WHERE id = ?`,
+      `UPDATE runs SET status = 'RUNNING', error = NULL, updated_at = ?
+       WHERE id = ? AND status = 'QUEUED'`,
       nowIso(),
       runId
     );
-    return true;
+    return changes > 0;
   },
 
   async updateRunStatus(db: D1Database, runId: string, status: RunStatus, error?: string): Promise<void> {
@@ -760,5 +748,30 @@ export const Db = {
       expectedNextAllowedMs
     );
     return changes > 0;
+  },
+
+  async tryAcquireGlobalRateLimitWindow(
+    db: D1Database,
+    key: string,
+    minIntervalMs: number
+  ): Promise<{ allowed: boolean; retryAfterMs: number }> {
+    await this.ensureGlobalRateLimitKey(db, key);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const now = Date.now();
+      const expectedNextAllowedMs = await this.readGlobalRateLimitNextAllowedMs(db, key);
+      if (expectedNextAllowedMs > now) {
+        return { allowed: false, retryAfterMs: expectedNextAllowedMs - now };
+      }
+      const updated = await this.compareAndSetGlobalRateLimit(
+        db,
+        key,
+        expectedNextAllowedMs,
+        now + minIntervalMs
+      );
+      if (updated) {
+        return { allowed: true, retryAfterMs: 0 };
+      }
+    }
+    return { allowed: false, retryAfterMs: minIntervalMs };
   }
 };

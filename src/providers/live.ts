@@ -100,8 +100,12 @@ const mapSeedSelectionByIndexToPaperIds = (
       throw new Error("seed_selection retry_query must set candidate_indices to an empty array");
     }
     const revisedQuery = llmOutput.revised_query?.trim() ?? "";
-    if (revisedQuery.length < 5) {
-      throw new Error("seed_selection retry_query must include revised_query (min length 5)");
+    const keywordCount = revisedQuery
+      .split(/\s+/)
+      .map((item) => item.trim())
+      .filter(Boolean).length;
+    if (keywordCount < 3 || keywordCount > 10) {
+      throw new Error("seed_selection retry_query must contain 3 to 10 keywords");
     }
     return seedSelectionSchema.parse({
       outcome: "retry_query",
@@ -113,8 +117,8 @@ const mapSeedSelectionByIndexToPaperIds = (
     throw new Error("seed_selection selected outcome must set revised_query to null");
   }
   const indices = llmOutput.candidate_indices;
-  if (indices.length < 1 || indices.length > 10) {
-    throw new Error("seed_selection selected outcome must include 1 to 10 candidate_indices");
+  if (indices.length < 1 || indices.length > 5) {
+    throw new Error("seed_selection selected outcome must include 1 to 5 candidate_indices");
   }
   const seen = new Set<number>();
   const paperIds = indices.map((candidateIndex) => {

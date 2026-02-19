@@ -43,9 +43,9 @@ const dedupeBy = <T>(items: T[], key: (item: T) => string): T[] => {
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
-const MIN_REQUIRED_SEEDS = 3;
+const MIN_REQUIRED_SEEDS = 1;
 const MAX_SEED_SELECTION_ATTEMPTS = 3;
-const SELECTION_WINDOW = 30;
+const SELECTION_WINDOW = 10;
 
 const withRetries = async <T>(
   label: string,
@@ -258,19 +258,10 @@ const executeLiveFlow = async (input: {
       0,
       SELECTION_WINDOW
     );
-    const topHits = rankedCandidates.slice(0, 5).map((candidate, candidateIndex) => ({
-      candidate_index: candidateIndex,
-      paper_id: candidate.paperId,
-      title: candidate.title,
-      year: candidate.year ?? null,
-      citation_count: candidate.citationCount ?? null,
-      fields_of_study: candidate.fieldsOfStudy
-    }));
     const searchSnapshot = {
       query: activeQuery,
       fields_of_study: queryPlan.fields_of_study,
-      total_hits: searchResults.length,
-      top_hits: topHits
+      total_hits: searchResults.length
     };
     const queryHistoryEntry: SeedSelectionQueryHistoryEntry = {
       query_index: queryHistory.length,
@@ -298,8 +289,7 @@ const executeLiveFlow = async (input: {
         thesisTitle: queryPlan.thesis_title,
         thesisSummary: queryPlan.thesis_summary,
         candidates: rankedCandidates,
-        queryHistory,
-        previousAttempts: selectionHistory
+        queryHistory
       })
     );
     stepData[`seedSelectionAttempt${attempt}`] = attemptSelection;

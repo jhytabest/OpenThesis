@@ -83,12 +83,7 @@ const formatIndexedCandidates = (candidates: CandidatePaper[]): string =>
   JSON.stringify(
     candidates.map((candidate, candidateIndex) => ({
       candidate_index: candidateIndex,
-      paper_id: candidate.paperId,
-      title: candidate.title,
-      abstract: candidate.abstract ?? null,
-      year: candidate.year ?? null,
-      citation_count: candidate.citationCount ?? null,
-      fields_of_study: candidate.fieldsOfStudy
+      title: candidate.title
     }))
   );
 
@@ -118,8 +113,8 @@ const mapSeedSelectionByIndexToPaperIds = (
     throw new Error("seed_selection selected outcome must set revised_query to null");
   }
   const indices = llmOutput.candidate_indices;
-  if (indices.length < 3 || indices.length > 10) {
-    throw new Error("seed_selection selected outcome must include 3 to 10 candidate_indices");
+  if (indices.length < 1 || indices.length > 10) {
+    throw new Error("seed_selection selected outcome must include 1 to 10 candidate_indices");
   }
   const seen = new Set<number>();
   const paperIds = indices.map((candidateIndex) => {
@@ -235,7 +230,6 @@ const buildLiveReasoningProvider = (env: Env) => {
           thesisSummary: input.thesisSummary,
           candidatesJson: formatIndexedCandidates(input.candidates),
           queryHistoryJson: JSON.stringify(input.queryHistory, null, 2),
-          previousAttemptsJson: JSON.stringify(input.previousAttempts, null, 2),
         }),
         prompt: seedSelectionPrompt,
         parse: (value) => {

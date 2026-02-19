@@ -77,20 +77,10 @@ export interface Env {
 export type QueryPlan = z.infer<typeof queryPlanSchema>;
 export type SeedSelection = z.infer<typeof seedSelectionSchema>;
 
-export interface SeedSelectionTopHitSnapshot {
-  candidate_index: number;
-  paper_id: string;
-  title: string;
-  year: number | null;
-  citation_count: number | null;
-  fields_of_study: string[];
-}
-
 export interface SeedSelectionSearchSnapshot {
   query: string;
   fields_of_study: string[];
   total_hits: number;
-  top_hits: SeedSelectionTopHitSnapshot[];
 }
 
 export interface SeedSelectionQueryHistoryEntry {
@@ -116,7 +106,6 @@ export interface SelectSeedsInput {
   thesisSummary: string;
   candidates: CandidatePaper[];
   queryHistory: SeedSelectionQueryHistoryEntry[];
-  previousAttempts: SeedSelectionAttemptHistory[];
 }
 
 export interface ReasoningProvider {

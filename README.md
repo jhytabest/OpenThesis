@@ -94,7 +94,7 @@ Artifacts are written under `debug-runs/<timestamp>/<thesis-id>/`:
 - `steps.json`: raw outputs per pipeline step
 - `result.json`: summary, scored papers, and enrichment
 
-The runner applies retries with adaptive backoff for transient failures and API rate limits, and performs up to 3 query-selection iterations before failing if fewer than 3 seeds are selected.
+The runner applies retries with adaptive backoff for transient failures and API rate limits, and performs up to 3 query-selection iterations before failing if fewer than 1 seed is selected.
 
 ## Deploy
 

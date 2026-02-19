@@ -12,9 +12,9 @@ import { buildProviders } from "../providers/index.js";
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const SEMANTIC_SCHOLAR_RATE_LIMIT_KEY = "semantic_scholar_api";
 const SEMANTIC_SCHOLAR_MIN_INTERVAL_MS = 1000;
-const MIN_REQUIRED_SEEDS = 3;
+const MIN_REQUIRED_SEEDS = 1;
 const MAX_SEED_SELECTION_ATTEMPTS = 3;
-const SELECTION_WINDOW = 30;
+const SELECTION_WINDOW = 10;
 
 async function withRetries<T>(
   fn: () => Promise<T>,
@@ -172,19 +172,10 @@ export async function processRun(env: Env, runId: string): Promise<void> {
         0,
         SELECTION_WINDOW
       );
-      const topHits = rankedCandidates.slice(0, 5).map((candidate, candidateIndex) => ({
-        candidate_index: candidateIndex,
-        paper_id: candidate.paperId,
-        title: candidate.title,
-        year: candidate.year ?? null,
-        citation_count: candidate.citationCount ?? null,
-        fields_of_study: candidate.fieldsOfStudy
-      }));
       const searchSnapshot = {
         query: activeQuery,
         fields_of_study: queryPlan.fields_of_study,
-        total_hits: searchResults.length,
-        top_hits: topHits
+        total_hits: searchResults.length
       };
       const queryHistoryEntry: SeedSelectionQueryHistoryEntry = {
         query_index: queryHistory.length,
@@ -213,8 +204,7 @@ export async function processRun(env: Env, runId: string): Promise<void> {
               thesisTitle: queryPlan.thesis_title,
               thesisSummary: queryPlan.thesis_summary,
               candidates: rankedCandidates,
-              queryHistory,
-              previousAttempts: selectionHistory
+              queryHistory
             }),
           3,
           (retryAttempt, error) =>

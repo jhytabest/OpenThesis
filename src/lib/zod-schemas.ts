@@ -38,7 +38,7 @@ export const queryPlanSchema = z.object({
 export const seedSelectionSchema = z.discriminatedUnion("outcome", [
   z.object({
     outcome: z.literal("selected"),
-    paper_ids: z.array(z.string().min(1)).min(3).max(10)
+    paper_ids: z.array(z.string().min(1)).min(1).max(10)
   }),
   z.object({
     outcome: z.literal("retry_query"),

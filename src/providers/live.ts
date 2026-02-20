@@ -54,6 +54,8 @@ const fetchJson = async <T>(
   }
 };
 
+const OPENAI_RESPONSE_TIMEOUT_MS = 180_000;
+
 const extractOutputText = (payload: {
   output_text?: string;
   output?: Array<{ content?: Array<{ type?: string; text?: string }> }>;
@@ -194,7 +196,8 @@ const buildLiveReasoningProvider = (env: Env) => {
           "content-type": "application/json"
         },
         body: JSON.stringify(requestBody)
-      }
+      },
+      OPENAI_RESPONSE_TIMEOUT_MS
     );
 
     const parsed = JSON.parse(extractOutputText(payload));

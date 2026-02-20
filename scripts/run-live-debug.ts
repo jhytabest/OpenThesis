@@ -63,7 +63,7 @@ const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 const MIN_REQUIRED_SEEDS = 1;
 const MIN_QUERY_KEYWORDS = 3;
-const SELECTION_WINDOW = 10;
+const SELECTION_WINDOW = 30;
 
 const splitQueryKeywords = (query: string): string[] =>
   query

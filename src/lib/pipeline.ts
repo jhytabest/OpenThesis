@@ -17,7 +17,7 @@ const SEMANTIC_SCHOLAR_RATE_LIMIT_KEY = "semantic_scholar_api";
 const SEMANTIC_SCHOLAR_MIN_INTERVAL_MS = 1000;
 const MIN_REQUIRED_SEEDS = 1;
 const MIN_QUERY_KEYWORDS = 3;
-const SELECTION_WINDOW = 10;
+const SELECTION_WINDOW = 30;
 
 async function withRetries<T>(
   fn: () => Promise<T>,

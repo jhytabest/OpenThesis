@@ -8,6 +8,8 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    html { height: 100%; }
+
     :root {
       --bg: #ffffff;
       --panel: #ffffff;
@@ -22,15 +24,18 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
 
     body {
       margin: 0;
+      min-height: 100%;
       font-family: "Manrope", "Segoe UI", sans-serif;
       background: var(--bg);
       color: var(--text);
+      -webkit-text-size-adjust: 100%;
     }
 
     .hidden { display: none !important; }
 
     .landing {
       min-height: 100vh;
+      min-height: 100dvh;
       display: grid;
       place-items: center;
       padding: 20px;
@@ -107,7 +112,8 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
     }
 
     .app-shell {
-      min-height: 100vh;
+      height: 100vh;
+      height: 100dvh;
       display: grid;
       grid-template-columns: 290px 1fr;
       background: #fff;
@@ -208,9 +214,9 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
 
     .main {
       min-width: 0;
-      min-height: 100vh;
+      min-height: 0;
       display: grid;
-      grid-template-rows: auto 1fr auto;
+      grid-template-rows: auto minmax(0, 1fr) auto;
     }
 
     .main-head {
@@ -236,6 +242,7 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
 
     .messages {
       overflow-y: auto;
+      min-height: 0;
       display: grid;
       gap: 14px;
       padding: 22px 20px;
@@ -309,6 +316,7 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
     .composer {
       border-top: 1px solid var(--line);
       padding: 12px;
+      padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
       background: #fff;
       display: grid;
       grid-template-columns: 1fr auto;
@@ -342,7 +350,7 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
     @media (max-width: 960px) {
       .app-shell {
         grid-template-columns: 1fr;
-        grid-template-rows: auto auto 1fr auto;
+        grid-template-rows: auto minmax(0, 1fr);
       }
 
       .sidebar {
@@ -356,6 +364,52 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
 
       .main {
         min-height: auto;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .landing {
+        padding: 14px;
+      }
+
+      .landing-card {
+        padding: 20px;
+        border-radius: 12px;
+      }
+
+      .landing h1 {
+        font-size: clamp(26px, 9vw, 34px);
+      }
+
+      .sidebar-head,
+      .sidebar-foot {
+        padding: 12px;
+      }
+
+      .chat-list {
+        max-height: 170px;
+      }
+
+      .main-head {
+        padding: 14px;
+      }
+
+      .main-head h2 {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: unset;
+      }
+
+      .messages {
+        padding: 14px;
+      }
+
+      .composer {
+        grid-template-columns: 1fr;
+      }
+
+      .composer .button {
+        width: 100%;
       }
     }
   </style>

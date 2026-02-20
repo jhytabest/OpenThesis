@@ -27,11 +27,11 @@ export const semanticScholarFieldsOfStudy = [
 ] as const;
 
 const semanticScholarFieldSchema = z.enum(semanticScholarFieldsOfStudy);
-const keywordQueryPattern = /^[A-Za-z0-9][A-Za-z0-9-]*(?:\s+[A-Za-z0-9][A-Za-z0-9-]*){2,9}$/;
+const keywordQueryPattern = /^[A-Za-z0-9][A-Za-z0-9-]*(?:\s+[A-Za-z0-9][A-Za-z0-9-]*){5,9}$/;
 const keywordQuerySchema = z
   .string()
   .trim()
-  .regex(keywordQueryPattern, "must contain 3 to 10 space-separated keywords");
+  .regex(keywordQueryPattern, "must contain 6 to 10 space-separated keywords");
 
 export const queryPlanSchema = z.object({
   thesis_title: z.string().min(5),
@@ -43,23 +43,14 @@ export const queryPlanSchema = z.object({
 export const seedSelectionSchema = z.discriminatedUnion("outcome", [
   z.object({
     outcome: z.literal("selected"),
-    paper_ids: z.array(z.string().min(1)).min(1).max(10)
+    paper_ids: z.array(z.string().min(1)).min(1).max(5)
   }),
   z.object({
-    outcome: z.literal("retry_query"),
-    revised_query: keywordQuerySchema
+    outcome: z.literal("empty")
   })
 ]);
 
-export const seedSelectionLlmSchema = z.discriminatedUnion("outcome", [
-  z.object({
-    outcome: z.literal("selected"),
-    candidate_indices: z.array(z.number().int().min(0)).min(1).max(5),
-    revised_query: z.null()
-  }),
-  z.object({
-    outcome: z.literal("retry_query"),
-    candidate_indices: z.array(z.number().int().min(0)).max(0),
-    revised_query: keywordQuerySchema
-  })
-]);
+export const seedSelectionLlmSchema = z.object({
+  outcome: z.enum(["selected", "empty"]),
+  candidate_indices: z.array(z.number().int().min(0))
+});

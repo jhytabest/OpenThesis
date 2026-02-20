@@ -1,5 +1,6 @@
 import { Db } from "./db.js";
 import { scorePaper } from "./scoring.js";
+import { seedSelectionSchema } from "./zod-schemas.js";
 import type {
   CanonicalPaper,
   Env,
@@ -13,7 +14,7 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 const SEMANTIC_SCHOLAR_RATE_LIMIT_KEY = "semantic_scholar_api";
 const SEMANTIC_SCHOLAR_MIN_INTERVAL_MS = 1000;
 const MIN_REQUIRED_SEEDS = 1;
-const MAX_SEED_SELECTION_ATTEMPTS = 3;
+const MIN_QUERY_KEYWORDS = 3;
 const SELECTION_WINDOW = 10;
 
 async function withRetries<T>(
@@ -52,6 +53,13 @@ const dedupeBy = <T>(items: T[], key: (item: T) => string): T[] => {
   }
   return output;
 };
+
+const splitQueryKeywords = (query: string): string[] =>
+  query
+    .trim()
+    .split(/\s+/)
+    .map((keyword) => keyword.trim())
+    .filter(Boolean);
 
 const acquireGlobalRateLimitSlot = async (
   env: Env,
@@ -142,13 +150,17 @@ export async function processRun(env: Env, runId: string): Promise<void> {
       detail: queryPlan
     });
 
-    let activeQuery = queryPlan.query;
+    let activeQueryKeywords = splitQueryKeywords(queryPlan.query);
+    let activeQuery = activeQueryKeywords.join(" ");
+    let activeQuerySource: SeedSelectionQueryHistoryEntry["source"] = "query_plan";
     let selectedSeedCandidates: Awaited<ReturnType<typeof providers.semanticScholar.search>> = [];
     let seedSelection: Awaited<ReturnType<typeof providers.reasoning.selectSeeds>> | null = null;
     const queryHistory: SeedSelectionQueryHistoryEntry[] = [];
     const selectionHistory: SeedSelectionAttemptHistory[] = [];
+    const maxSelectionAttempts = Math.max(1, activeQueryKeywords.length - MIN_QUERY_KEYWORDS + 1);
 
-    for (let attempt = 1; attempt <= MAX_SEED_SELECTION_ATTEMPTS; attempt += 1) {
+    for (let attempt = 1; attempt <= maxSelectionAttempts; attempt += 1) {
+      activeQuery = activeQueryKeywords.join(" ");
       const searchResults = await runStep(env, runId, `semantic_search_attempt_${attempt}`, () =>
         withRetries(
           async () => {
@@ -179,7 +191,7 @@ export async function processRun(env: Env, runId: string): Promise<void> {
       };
       const queryHistoryEntry: SeedSelectionQueryHistoryEntry = {
         query_index: queryHistory.length,
-        source: attempt === 1 ? "query_plan" : "selection_retry",
+        source: activeQuerySource,
         search: searchSnapshot
       };
       queryHistory.push(queryHistoryEntry);
@@ -196,6 +208,29 @@ export async function processRun(env: Env, runId: string): Promise<void> {
           selectionCandidates: rankedCandidates.length
         }
       });
+
+      if (searchResults.length === 0) {
+        const nextQueryKeywords =
+          activeQueryKeywords.length > MIN_QUERY_KEYWORDS
+            ? activeQueryKeywords.slice(1)
+            : null;
+        seedSelection = seedSelectionSchema.parse({ outcome: "empty" });
+        selectionHistory.push({
+          attempt,
+          query_index: queryHistoryEntry.query_index,
+          decision: {
+            outcome: "empty",
+            selected_candidate_indices: [],
+            revised_query: nextQueryKeywords ? nextQueryKeywords.join(" ") : null
+          }
+        });
+        if (!nextQueryKeywords) {
+          break;
+        }
+        activeQueryKeywords = nextQueryKeywords;
+        activeQuerySource = "shorten_specific";
+        continue;
+      }
 
       const attemptSelection = await runStep(env, runId, `llm_select_seeds_attempt_${attempt}`, () =>
         withRetries(
@@ -241,16 +276,24 @@ export async function processRun(env: Env, runId: string): Promise<void> {
           break;
         }
       } else {
+        const nextQueryKeywords =
+          activeQueryKeywords.length > MIN_QUERY_KEYWORDS
+            ? activeQueryKeywords.slice(0, activeQueryKeywords.length - 1)
+            : null;
         selectionHistory.push({
           attempt,
           query_index: queryHistoryEntry.query_index,
           decision: {
-            outcome: "retry_query",
+            outcome: "empty",
             selected_candidate_indices: [],
-            revised_query: attemptSelection.revised_query
+            revised_query: nextQueryKeywords ? nextQueryKeywords.join(" ") : null
           }
         });
-        activeQuery = attemptSelection.revised_query;
+        if (!nextQueryKeywords) {
+          break;
+        }
+        activeQueryKeywords = nextQueryKeywords;
+        activeQuerySource = "shorten_broad";
       }
     }
 
@@ -274,7 +317,7 @@ export async function processRun(env: Env, runId: string): Promise<void> {
 
     if (seedSelection.outcome !== "selected" || selectedSeedCandidates.length < MIN_REQUIRED_SEEDS) {
       throw new Error(
-        `llm_select_seeds did not produce at least ${MIN_REQUIRED_SEEDS} seeds after ${MAX_SEED_SELECTION_ATTEMPTS} attempts`
+        `llm_select_seeds did not produce at least ${MIN_REQUIRED_SEEDS} seeds after ${maxSelectionAttempts} attempts`
       );
     }
     const seedsToResolve = selectedSeedCandidates;

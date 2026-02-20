@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import theses from "../fixtures/mock-theses.json";
 import { scorePaper } from "../src/lib/scoring.js";
+import { seedSelectionSchema } from "../src/lib/zod-schemas.js";
 import type {
   CandidatePaper,
   CanonicalPaper,
@@ -44,8 +45,15 @@ const dedupeBy = <T>(items: T[], key: (item: T) => string): T[] => {
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 const MIN_REQUIRED_SEEDS = 1;
-const MAX_SEED_SELECTION_ATTEMPTS = 3;
+const MIN_QUERY_KEYWORDS = 3;
 const SELECTION_WINDOW = 10;
+
+const splitQueryKeywords = (query: string): string[] =>
+  query
+    .trim()
+    .split(/\s+/)
+    .map((keyword) => keyword.trim())
+    .filter(Boolean);
 
 const withRetries = async <T>(
   label: string,
@@ -240,15 +248,19 @@ const executeLiveFlow = async (input: {
   );
   stepData.queryPlan = queryPlan;
 
-  let activeQuery = queryPlan.query;
+  let activeQueryKeywords = splitQueryKeywords(queryPlan.query);
+  let activeQuery = activeQueryKeywords.join(" ");
+  let activeQuerySource: SeedSelectionQueryHistoryEntry["source"] = "query_plan";
   let seedSelection: Awaited<ReturnType<typeof providers.reasoning.selectSeeds>> | null = null;
   let selectedSeedCandidates: CandidatePaper[] = [];
   const queryHistory: SeedSelectionQueryHistoryEntry[] = [];
   const selectionHistory: SeedSelectionAttemptHistory[] = [];
   let mergedCandidates: CandidatePaper[] = [];
   let initialCandidates: CandidatePaper[] = [];
+  const maxSelectionAttempts = Math.max(1, activeQueryKeywords.length - MIN_QUERY_KEYWORDS + 1);
 
-  for (let attempt = 1; attempt <= MAX_SEED_SELECTION_ATTEMPTS; attempt += 1) {
+  for (let attempt = 1; attempt <= maxSelectionAttempts; attempt += 1) {
+    activeQuery = activeQueryKeywords.join(" ");
     const searchResults = await withRetries(`semantic_search_attempt_${attempt}`, () =>
       withSemanticScholarRateLimit(() =>
         providers.semanticScholar.search(activeQuery, queryPlan.fields_of_study, SELECTION_WINDOW)
@@ -265,7 +277,7 @@ const executeLiveFlow = async (input: {
     };
     const queryHistoryEntry: SeedSelectionQueryHistoryEntry = {
       query_index: queryHistory.length,
-      source: attempt === 1 ? "query_plan" : "selection_retry",
+      source: activeQuerySource,
       search: searchSnapshot
     };
     queryHistory.push(queryHistoryEntry);
@@ -279,6 +291,29 @@ const executeLiveFlow = async (input: {
       initialCandidates = searchResults;
     }
     mergedCandidates = rankedCandidates;
+
+    if (searchResults.length === 0) {
+      const nextQueryKeywords =
+        activeQueryKeywords.length > MIN_QUERY_KEYWORDS
+          ? activeQueryKeywords.slice(1)
+          : null;
+      seedSelection = seedSelectionSchema.parse({ outcome: "empty" });
+      selectionHistory.push({
+        attempt,
+        query_index: queryHistoryEntry.query_index,
+        decision: {
+          outcome: "empty",
+          selected_candidate_indices: [],
+          revised_query: nextQueryKeywords ? nextQueryKeywords.join(" ") : null
+        }
+      });
+      if (!nextQueryKeywords) {
+        break;
+      }
+      activeQueryKeywords = nextQueryKeywords;
+      activeQuerySource = "shorten_specific";
+      continue;
+    }
 
     const candidateById = new Map(rankedCandidates.map((candidate) => [candidate.paperId, candidate]));
     const candidateIndexById = new Map(
@@ -319,16 +354,24 @@ const executeLiveFlow = async (input: {
         break;
       }
     } else {
+      const nextQueryKeywords =
+        activeQueryKeywords.length > MIN_QUERY_KEYWORDS
+          ? activeQueryKeywords.slice(0, activeQueryKeywords.length - 1)
+          : null;
       selectionHistory.push({
         attempt,
         query_index: queryHistoryEntry.query_index,
         decision: {
-          outcome: "retry_query",
+          outcome: "empty",
           selected_candidate_indices: [],
-          revised_query: attemptSelection.revised_query
+          revised_query: nextQueryKeywords ? nextQueryKeywords.join(" ") : null
         }
       });
-      activeQuery = attemptSelection.revised_query;
+      if (!nextQueryKeywords) {
+        break;
+      }
+      activeQueryKeywords = nextQueryKeywords;
+      activeQuerySource = "shorten_broad";
     }
   }
 
@@ -343,7 +386,7 @@ const executeLiveFlow = async (input: {
 
   if (seedSelection.outcome !== "selected" || selectedSeedCandidates.length < MIN_REQUIRED_SEEDS) {
     throw new Error(
-      `llm_select_seeds did not produce at least ${MIN_REQUIRED_SEEDS} seeds after ${MAX_SEED_SELECTION_ATTEMPTS} attempts`
+      `llm_select_seeds did not produce at least ${MIN_REQUIRED_SEEDS} seeds after ${maxSelectionAttempts} attempts`
     );
   }
   const seedsToResolve = selectedSeedCandidates;

@@ -89,36 +89,23 @@ const formatIndexedCandidates = (candidates: CandidatePaper[]): string =>
 
 const mapSeedSelectionByIndexToPaperIds = (
   llmOutput: {
-    outcome: "selected" | "retry_query";
+    outcome: "selected" | "empty";
     candidate_indices: number[];
-    revised_query: string | null;
   },
   candidates: CandidatePaper[]
 ): SeedSelection => {
-  if (llmOutput.outcome === "retry_query") {
+  if (llmOutput.outcome === "empty") {
     if (llmOutput.candidate_indices.length > 0) {
-      throw new Error("seed_selection retry_query must set candidate_indices to an empty array");
-    }
-    const revisedQuery = llmOutput.revised_query?.trim() ?? "";
-    const keywordCount = revisedQuery
-      .split(/\s+/)
-      .map((item) => item.trim())
-      .filter(Boolean).length;
-    if (keywordCount < 3 || keywordCount > 10) {
-      throw new Error("seed_selection retry_query must contain 3 to 10 keywords");
+      throw new Error("candidate_decision empty must set candidate_indices to an empty array");
     }
     return seedSelectionSchema.parse({
-      outcome: "retry_query",
-      revised_query: revisedQuery
+      outcome: "empty"
     });
   }
 
-  if (llmOutput.revised_query !== null) {
-    throw new Error("seed_selection selected outcome must set revised_query to null");
-  }
   const indices = llmOutput.candidate_indices;
   if (indices.length < 1 || indices.length > 5) {
-    throw new Error("seed_selection selected outcome must include 1 to 5 candidate_indices");
+    throw new Error("candidate_decision selected outcome must include 1 to 5 candidate_indices");
   }
   const seen = new Set<number>();
   const paperIds = indices.map((candidateIndex) => {
@@ -217,8 +204,8 @@ const buildLiveReasoningProvider = (env: Env) => {
   return {
     async generateQueryPlan(thesisText: string): Promise<QueryPlan> {
       return runStructuredPrompt({
-        name: "query_plan",
-        schema: openAiStrictSchema(queryPlanSchema, "query_plan"),
+        name: "thesis_query",
+        schema: openAiStrictSchema(queryPlanSchema, "thesis_query"),
         user: LlmPrompts.queryPlanUser(thesisText),
         prompt: queryPlanPrompt,
         parse: (value) => queryPlanSchema.parse(value)
@@ -227,8 +214,8 @@ const buildLiveReasoningProvider = (env: Env) => {
 
     async selectSeeds(input: SelectSeedsInput): Promise<SeedSelection> {
       return runStructuredPrompt({
-        name: "seed_selection",
-        schema: openAiStrictSchema(seedSelectionLlmSchema, "seed_selection"),
+        name: "candidate_decision",
+        schema: openAiStrictSchema(seedSelectionLlmSchema, "candidate_decision"),
         user: LlmPrompts.seedSelectionUser({
           thesisTitle: input.thesisTitle,
           thesisSummary: input.thesisSummary,

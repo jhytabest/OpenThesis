@@ -85,12 +85,12 @@ export interface SeedSelectionSearchSnapshot {
 
 export interface SeedSelectionQueryHistoryEntry {
   query_index: number;
-  source: "query_plan" | "selection_retry";
+  source: "query_plan" | "shorten_specific" | "shorten_broad";
   search: SeedSelectionSearchSnapshot;
 }
 
 export interface SeedSelectionDecisionSnapshot {
-  outcome: "selected" | "retry_query";
+  outcome: "selected" | "empty";
   selected_candidate_indices: number[];
   revised_query: string | null;
 }

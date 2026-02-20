@@ -78,16 +78,8 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
 
   <section class="panel" id="submitPanel" hidden>
     <h2>Thesis Intake</h2>
-    <div class="row">
-      <div>
-        <label for="title">Title</label>
-        <input id="title" placeholder="Thesis title" />
-      </div>
-      <div>
-        <label for="thesisSelect">Existing thesis</label>
-        <select id="thesisSelect"></select>
-      </div>
-    </div>
+    <label for="thesisSelect">Existing thesis</label>
+    <select id="thesisSelect"></select>
     <label for="text">Thesis text</label>
     <textarea id="text" placeholder="Paste thesis text"></textarea>
     <div class="actions" style="margin-top: 10px;">
@@ -235,13 +227,19 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
     const data = await api('/api/theses');
     state.theses = data.theses;
     const select = byId('thesisSelect');
+    const previouslySelected = select.value;
     clearNode(select);
     state.theses.forEach((thesis) => {
       const option = document.createElement('option');
       option.value = thesis.id;
-      option.textContent = thesis.title + ' (' + new Date(thesis.createdAt).toLocaleString() + ')';
+      const title = typeof thesis.title === 'string' ? thesis.title.trim() : '';
+      const label = title.length > 0 ? title : 'Thesis ' + thesis.id;
+      option.textContent = label + ' (' + new Date(thesis.createdAt).toLocaleString() + ')';
       select.append(option);
     });
+    if (previouslySelected && state.theses.some((thesis) => thesis.id === previouslySelected)) {
+      select.value = previouslySelected;
+    }
   }
 
   async function loadRuns() {
@@ -259,6 +257,25 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
 
       const statusCell = document.createElement('td');
       statusCell.append(badge(run.status));
+      const enrichment = run.enrichment || {};
+      const enrichmentEnqueued = Number(enrichment.enqueued || 0);
+      const enrichmentCompleted = Number(enrichment.completed || 0);
+      const enrichmentFailed = Number(enrichment.failed || 0);
+      const enrichmentPending = Number(enrichment.pending || 0);
+      if (enrichmentEnqueued > 0 || enrichmentFailed > 0) {
+        const enrichmentMeta = document.createElement('div');
+        enrichmentMeta.className = 'muted';
+        enrichmentMeta.textContent =
+          'Enrich ' +
+          (enrichmentCompleted + enrichmentFailed) +
+          '/' +
+          enrichmentEnqueued +
+          ' | pending ' +
+          enrichmentPending +
+          ' | failed ' +
+          enrichmentFailed;
+        statusCell.append(enrichmentMeta);
+      }
       row.append(statusCell);
 
       row.append(cell(new Date(run.updatedAt).toLocaleString()));
@@ -292,7 +309,21 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
     ]);
 
     byId('detailsPanel').hidden = false;
-    byId('detailsMeta').textContent = 'Status: ' + run.run.status + ' | Steps: ' + run.run.steps.length;
+    const enrichment = run.run.enrichment || {};
+    byId('detailsMeta').textContent =
+      'Status: ' +
+      run.run.status +
+      ' | Steps: ' +
+      run.run.steps.length +
+      ' | Enrichment ' +
+      (Number(enrichment.completed || 0) + Number(enrichment.failed || 0)) +
+      '/' +
+      Number(enrichment.enqueued || 0) +
+      ' done, ' +
+      Number(enrichment.pending || 0) +
+      ' pending, ' +
+      Number(enrichment.failed || 0) +
+      ' failed';
 
     const papersBody = byId('papersBody');
     clearNode(papersBody);
@@ -349,11 +380,9 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
       await api('/api/theses', {
         method: 'POST',
         body: JSON.stringify({
-          title: byId('title').value,
           text: byId('text').value
         })
       });
-      byId('title').value = '';
       byId('text').value = '';
       await loadTheses();
       await loadRuns();

@@ -2,8 +2,8 @@ import { Hono, type Context } from "hono";
 import { Auth } from "./lib/auth.js";
 import { Db } from "./lib/db.js";
 import { OAuth } from "./lib/oauth.js";
-import { processRun } from "./lib/pipeline.js";
-import type { Env } from "./lib/types.js";
+import { processRun, processUnpaywallEnrichmentMessage } from "./lib/pipeline.js";
+import type { Env, UnpaywallEnrichmentMessage } from "./lib/types.js";
 import { renderHomeHtml } from "./ui/index.js";
 import { WorkflowEntrypoint } from "cloudflare:workers";
 
@@ -19,10 +19,12 @@ const json = (data: unknown, status = 200): Response =>
     headers: { "content-type": "application/json" }
   });
 
-const MAX_THESIS_TITLE_LENGTH = 200;
 const MAX_THESIS_TEXT_LENGTH = 50_000;
 const THESIS_CREATE_MIN_INTERVAL_MS = 3_000;
 const RUN_CREATE_MIN_INTERVAL_MS = 15_000;
+const RUN_QUEUE_NAME = "alexclaw-runs";
+const ENRICH_QUEUE_NAME = "alexclaw-enrichment";
+const ENRICH_QUEUE_MAX_ATTEMPTS = 4;
 
 const safeJsonParse = <T>(value: string, fallback: T): T => {
   try {
@@ -202,7 +204,7 @@ app.post("/api/theses", async (c) => {
   }
 
   const bodyRaw = await c.req.json().catch(() => ({}));
-  const body = bodyRaw as { title?: string; text?: string };
+  const body = bodyRaw as { text?: string };
   const text = body.text?.trim();
   if (!text || text.length < 30) {
     return json({ error: "text is required and must be at least 30 characters" }, 400);
@@ -211,13 +213,8 @@ app.post("/api/theses", async (c) => {
     return json({ error: `text must be at most ${MAX_THESIS_TEXT_LENGTH} characters` }, 413);
   }
 
-  const title = body.title?.trim() || "Untitled thesis";
-  if (title.length > MAX_THESIS_TITLE_LENGTH) {
-    return json({ error: `title must be at most ${MAX_THESIS_TITLE_LENGTH} characters` }, 400);
-  }
   const thesis = await Db.createThesis(c.env.ALEXCLAW_DB, {
     userId: user.id,
-    title,
     text
   });
 
@@ -286,15 +283,28 @@ app.get("/api/runs", async (c) => {
   }
 
   const runs = await Db.listRunsByUser(c.env.ALEXCLAW_DB, user.id);
+  const enrichmentProgress = await Db.listRunEnrichmentProgressByUser(c.env.ALEXCLAW_DB, user.id);
+  const enrichmentByRunId = new Map(enrichmentProgress.map((entry) => [entry.run_id, entry]));
   return json({
-    runs: runs.map((run) => ({
-      id: run.id,
-      thesisId: run.thesis_id,
-      status: run.status,
-      error: run.error,
-      createdAt: run.created_at,
-      updatedAt: run.updated_at
-    }))
+    runs: runs.map((run) => {
+      const enrichment = enrichmentByRunId.get(run.id);
+      return {
+        id: run.id,
+        thesisId: run.thesis_id,
+        status: run.status,
+        error: run.error,
+        createdAt: run.created_at,
+        updatedAt: run.updated_at,
+        enrichment: {
+          enqueued: enrichment?.enqueued_count ?? 0,
+          completed: enrichment?.lookup_completed_count ?? 0,
+          found: enrichment?.lookup_found_count ?? 0,
+          notFound: enrichment?.lookup_not_found_count ?? 0,
+          failed: enrichment?.lookup_failed_count ?? 0,
+          pending: enrichment?.pending_count ?? 0
+        }
+      };
+    })
   });
 });
 
@@ -311,6 +321,7 @@ app.get("/api/runs/:runId", async (c) => {
   }
 
   const steps = await Db.listRunStepsOwned(c.env.ALEXCLAW_DB, runId, user.id);
+  const enrichment = await Db.getRunEnrichmentProgressOwned(c.env.ALEXCLAW_DB, runId, user.id);
   return json({
     run: {
       id: run.id,
@@ -319,6 +330,14 @@ app.get("/api/runs/:runId", async (c) => {
       error: run.error,
       createdAt: run.created_at,
       updatedAt: run.updated_at,
+      enrichment: {
+        enqueued: enrichment?.enqueued_count ?? 0,
+        completed: enrichment?.lookup_completed_count ?? 0,
+        found: enrichment?.lookup_found_count ?? 0,
+        notFound: enrichment?.lookup_not_found_count ?? 0,
+        failed: enrichment?.lookup_failed_count ?? 0,
+        pending: enrichment?.pending_count ?? 0
+      },
       steps: steps.map((step) => ({
         id: step.id,
         name: step.step_name,
@@ -475,9 +494,76 @@ export class AlexclawRunWorkflow extends WorkflowEntrypoint<Env, { runId: string
 export default {
   fetch: app.fetch,
   async queue(
-    batch: { messages: Array<{ body: unknown; ack(): void; retry(): void }> },
+    batch: {
+      queue: string;
+      messages: Array<{ body: unknown; attempts: number; ack(): void; retry(): void }>;
+    },
     env: Env
   ): Promise<void> {
+    if (batch.queue === ENRICH_QUEUE_NAME) {
+      for (const message of batch.messages) {
+        let payload: UnpaywallEnrichmentMessage | null = null;
+        try {
+          if (typeof message.body === "string") {
+            payload = safeJsonParse<UnpaywallEnrichmentMessage | null>(message.body, null);
+          } else if (message.body && typeof message.body === "object") {
+            payload = message.body as UnpaywallEnrichmentMessage;
+          }
+
+          if (
+            !payload ||
+            typeof payload.runId !== "string" ||
+            typeof payload.paperId !== "string" ||
+            typeof payload.openalexId !== "string" ||
+            typeof payload.doi !== "string" ||
+            payload.runId.length === 0 ||
+            payload.paperId.length === 0 ||
+            payload.openalexId.length === 0 ||
+            payload.doi.length === 0
+          ) {
+            message.ack();
+            continue;
+          }
+
+          await processUnpaywallEnrichmentMessage(env, payload);
+          message.ack();
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error("enrichment queue message failed", {
+            attempts: message.attempts,
+            error: errorMessage
+          });
+          if (payload && message.attempts >= ENRICH_QUEUE_MAX_ATTEMPTS) {
+            try {
+              await Db.insertEvidence(env.ALEXCLAW_DB, {
+                runId: payload.runId,
+                entityType: "paper",
+                entityId: payload.openalexId,
+                source: "unpaywall.lookup_failed",
+                detail: {
+                  doi: payload.doi,
+                  attempts: message.attempts,
+                  maxAttempts: ENRICH_QUEUE_MAX_ATTEMPTS,
+                  error: errorMessage
+                }
+              });
+            } catch (persistenceError) {
+              console.error("failed to persist enrichment terminal failure", persistenceError);
+            }
+            message.ack();
+          } else {
+            message.retry();
+          }
+        }
+      }
+      return;
+    }
+
+    if (batch.queue !== RUN_QUEUE_NAME) {
+      batch.messages.forEach((message) => message.ack());
+      return;
+    }
+
     for (const message of batch.messages) {
       try {
         let payload: { runId?: string } | null = null;

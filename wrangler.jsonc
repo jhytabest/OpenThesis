@@ -25,11 +25,21 @@
       {
         "binding": "ALEXCLAW_RUN_QUEUE",
         "queue": "alexclaw-runs"
+      },
+      {
+        "binding": "ALEXCLAW_ENRICH_QUEUE",
+        "queue": "alexclaw-enrichment"
       }
     ],
     "consumers": [
       {
         "queue": "alexclaw-runs",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3
+      },
+      {
+        "queue": "alexclaw-enrichment",
         "max_batch_size": 1,
         "max_batch_timeout": 1,
         "max_retries": 3

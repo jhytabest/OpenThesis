@@ -433,17 +433,56 @@ const executeLiveFlow = async (input: {
     }))
     .sort((a, b) => b.score.totalScore - a.score.totalScore);
 
-  const topForEnrichment = scored.filter((paper) => paper.doi).slice(0, 10);
+  const enrichmentJobs = scored
+    .filter((paper) => Boolean(paper.doi))
+    .map((paper) => ({ openalexId: paper.openalexId, doi: paper.doi! }));
   const enrichment = [];
-  for (const paper of topForEnrichment) {
-    const access = await withRetries("unpaywall_lookup", () =>
-      providers.unpaywall.lookupByDoi(paper.doi!)
-    );
-    enrichment.push({
-      openalexId: paper.openalexId,
-      doi: paper.doi,
-      access
-    });
+  const enrichQueueMaxAttempts = 4;
+  stepData.enqueueUnpaywallEnrichment = { enqueuedCount: enrichmentJobs.length };
+  for (const job of enrichmentJobs) {
+    let processed = false;
+    for (let attempt = 1; attempt <= enrichQueueMaxAttempts; attempt += 1) {
+      try {
+        const access = await withRetries(
+          "unpaywall_lookup",
+          () => providers.unpaywall.lookupByDoi(job.doi),
+          2
+        );
+        enrichment.push({
+          openalexId: job.openalexId,
+          doi: job.doi,
+          status: "completed",
+          attempts: attempt,
+          found: Boolean(access),
+          access
+        });
+        processed = true;
+        break;
+      } catch (error) {
+        if (attempt >= enrichQueueMaxAttempts) {
+          enrichment.push({
+            openalexId: job.openalexId,
+            doi: job.doi,
+            status: "failed",
+            attempts: attempt,
+            found: false,
+            error: error instanceof Error ? error.message : String(error)
+          });
+          processed = true;
+          break;
+        }
+      }
+    }
+    if (!processed) {
+      enrichment.push({
+        openalexId: job.openalexId,
+        doi: job.doi,
+        status: "failed",
+        attempts: enrichQueueMaxAttempts,
+        found: false,
+        error: "Unpaywall enrichment did not reach a terminal state"
+      });
+    }
   }
 
   const summary = {
@@ -459,7 +498,10 @@ const executeLiveFlow = async (input: {
       selectedSeeds: seedsToResolve.length,
       canonicalSeeds: canonicalSeeds.length,
       graphPapers: allPapers.length,
-      graphEdges: allEdges.length
+      graphEdges: allEdges.length,
+      enrichmentEnqueued: enrichmentJobs.length,
+      enrichmentCompleted: enrichment.filter((entry) => entry.status === "completed").length,
+      enrichmentFailed: enrichment.filter((entry) => entry.status === "failed").length
     },
     queryPlan,
     finalQuery: activeQuery,

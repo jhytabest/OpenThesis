@@ -232,7 +232,7 @@ const buildLiveReasoningProvider = (env: Env) => {
   };
 };
 
-const buildLiveUnpaywallProvider = (env: Env) => {
+export const buildLiveUnpaywallProvider = (env: Env) => {
   if (!env.UNPAYWALL_EMAIL) {
     return {
       async lookupByDoi(): Promise<{

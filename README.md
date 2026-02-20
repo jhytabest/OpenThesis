@@ -17,7 +17,7 @@ Production-oriented MVP for thesis-to-paper-graph using:
   - Semantic Scholar search
   - OpenAlex canonicalization + graph expansion
   - Relevance scoring + tiering
-  - Unpaywall PDF enrichment
+  - Asynchronous Unpaywall PDF enrichment via queue
 - Traceable run evidence and step audit trail
 - Minimal UI to inspect papers/authors/edges
 - Global Semantic Scholar throttle at 1 request/second (D1-backed lease)
@@ -53,11 +53,12 @@ cp .env.example .env
 
 Google callback URL is derived automatically from request origin (`https://<host>/auth/google/callback`).
 
-3. Create D1 database and queue in Cloudflare (one time)
+3. Create D1 database and queues in Cloudflare (one time)
 
 ```bash
 wrangler d1 create alexclaw
 wrangler queues create alexclaw-runs
+wrangler queues create alexclaw-enrichment
 ```
 
 4. Put generated D1 `database_id` into `wrangler.jsonc`.
@@ -92,9 +93,9 @@ Artifacts are written under `debug-runs/<timestamp>/<thesis-id>/`:
 - `thesis.json`: selected fixture text
 - `http.log.ndjson`: full outbound API requests and responses
 - `steps.json`: raw outputs per pipeline step
-- `result.json`: summary, scored papers, and enrichment
+- `result.json`: summary, scored papers, and enrichment attempts for all DOI papers
 
-The runner applies retries with adaptive backoff for transient failures and API rate limits, and performs up to 3 query-selection iterations before failing if fewer than 1 seed is selected.
+The runner applies retries with adaptive backoff for transient failures and API rate limits, iteratively shortens the query terms when no seeds are selected, and simulates queued Unpaywall retries.
 
 ## Deploy
 
@@ -129,7 +130,9 @@ Configured in `wrangler.jsonc`:
 
 - `ALEXCLAW_DB`: D1 database binding
 - `ALEXCLAW_RUN_QUEUE`: queue producer binding
+- `ALEXCLAW_ENRICH_QUEUE`: queue producer binding
 - queue consumer for `alexclaw-runs`
+- queue consumer for `alexclaw-enrichment` (asynchronous Unpaywall enrichment)
 - `ALEXCLAW_RUN_WORKFLOW`: workflow binding (`AlexclawRunWorkflow` class)
 
 ## API Routes
@@ -152,6 +155,8 @@ Core:
 - `GET /api/runs/:runId/authors`
 - `GET /api/runs/:runId/edges`
 - `GET /api/runs/:runId/evidence`
+
+Run responses include `enrichment` counters (`enqueued`, `completed`, `found`, `notFound`, `failed`, `pending`) so queued Unpaywall progress is visible even after the main graph run reaches `COMPLETED`.
 
 Ops:
 

@@ -6,9 +6,11 @@ import type {
   Env,
   GraphEdge,
   SeedSelectionAttemptHistory,
-  SeedSelectionQueryHistoryEntry
+  SeedSelectionQueryHistoryEntry,
+  UnpaywallEnrichmentMessage
 } from "./types.js";
 import { buildProviders } from "../providers/index.js";
+import { buildLiveUnpaywallProvider } from "../providers/live.js";
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const SEMANTIC_SCHOLAR_RATE_LIMIT_KEY = "semantic_scholar_api";
@@ -60,6 +62,14 @@ const splitQueryKeywords = (query: string): string[] =>
     .split(/\s+/)
     .map((keyword) => keyword.trim())
     .filter(Boolean);
+
+const chunkArray = <T>(items: T[], size: number): T[][] => {
+  const output: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    output.push(items.slice(i, i + size));
+  }
+  return output;
+};
 
 const acquireGlobalRateLimitSlot = async (
   env: Env,
@@ -113,6 +123,59 @@ async function runStep<T>(
   throw new Error("unreachable");
 }
 
+export async function processUnpaywallEnrichmentMessage(
+  env: Env,
+  message: UnpaywallEnrichmentMessage
+): Promise<void> {
+  const unpaywall = buildLiveUnpaywallProvider(env);
+  const access = await withRetries(
+    () => unpaywall.lookupByDoi(message.doi),
+    2,
+    (attempt, error) =>
+      console.warn("unpaywall lookup retry", {
+        runId: message.runId,
+        openalexId: message.openalexId,
+        attempt,
+        error
+      })
+  );
+
+  if (!access) {
+    await Db.insertEvidence(env.ALEXCLAW_DB, {
+      runId: message.runId,
+      entityType: "paper",
+      entityId: message.openalexId,
+      source: "unpaywall.lookup",
+      detail: {
+        doi: message.doi,
+        found: false
+      }
+    });
+    return;
+  }
+
+  await Db.upsertPaperAccess(env.ALEXCLAW_DB, {
+    paperId: message.paperId,
+    pdfUrl: access.pdfUrl,
+    oaStatus: access.oaStatus,
+    license: access.license
+  });
+
+  await Db.insertEvidence(env.ALEXCLAW_DB, {
+    runId: message.runId,
+    entityType: "paper",
+    entityId: message.openalexId,
+    source: "unpaywall.lookup",
+    detail: {
+      doi: message.doi,
+      found: true,
+      pdfUrl: access.pdfUrl,
+      oaStatus: access.oaStatus,
+      license: access.license
+    }
+  });
+}
+
 export async function processRun(env: Env, runId: string): Promise<void> {
   const providers = buildProviders(env);
   const run = await Db.getRunById(env.ALEXCLAW_DB, runId);
@@ -141,6 +204,15 @@ export async function processRun(env: Env, runId: string): Promise<void> {
         (attempt, error) => console.warn("llm_query_plan retry", { runId, attempt, error })
       )
     );
+
+    const extractedThesisTitle = queryPlan.thesis_title.trim();
+    if (extractedThesisTitle && extractedThesisTitle !== thesis.title) {
+      await Db.updateThesisTitleOwned(env.ALEXCLAW_DB, {
+        thesisId: thesis.id,
+        userId: run.user_id,
+        title: extractedThesisTitle
+      });
+    }
 
     await Db.insertEvidence(env.ALEXCLAW_DB, {
       runId,
@@ -442,41 +514,28 @@ export async function processRun(env: Env, runId: string): Promise<void> {
       });
     }
 
-    await runStep(env, runId, "unpaywall_enrichment", async () => {
-      const enriched: Array<{ openalexId: string; doi: string; pdfUrl?: string }> = [];
-
-      for (const paper of allPapers) {
-        if (!paper.doi) {
-          continue;
-        }
-
-        const access = await withRetries(
-          () => providers.unpaywall.lookupByDoi(paper.doi!),
-          2,
-          (attempt, error) => console.warn("unpaywall lookup retry", { runId, attempt, error })
-        );
-
-        if (!access) {
-          continue;
-        }
-
-        await Db.upsertPaperAccess(env.ALEXCLAW_DB, {
+    const unpaywallEnqueueResult = await runStep(env, runId, "enqueue_unpaywall_enrichment", async () => {
+      const enrichmentMessages: UnpaywallEnrichmentMessage[] = allPapers
+        .filter((paper) => Boolean(paper.doi))
+        .map((paper) => ({
+          runId,
           paperId: paperIdByOpenAlexId.get(paper.openalexId)!,
-          pdfUrl: access.pdfUrl,
-          oaStatus: access.oaStatus,
-          license: access.license
-        });
-
-        enriched.push({
           openalexId: paper.openalexId,
-          doi: paper.doi,
-          pdfUrl: access.pdfUrl
-        });
+          doi: paper.doi!
+        }));
+
+      if (enrichmentMessages.length === 0) {
+        return { enqueuedCount: 0 };
+      }
+
+      for (const chunk of chunkArray(enrichmentMessages, 100)) {
+        await env.ALEXCLAW_ENRICH_QUEUE.sendBatch(
+          chunk.map((body) => ({ body }))
+        );
       }
 
       return {
-        enrichedCount: enriched.length,
-        enriched
+        enqueuedCount: enrichmentMessages.length
       };
     });
 
@@ -489,6 +548,7 @@ export async function processRun(env: Env, runId: string): Promise<void> {
         paperCount: allPapers.length,
         edgeCount: validEdges.length,
         seedCount: canonicalSeeds.length,
+        enrichmentEnqueuedCount: unpaywallEnqueueResult.enqueuedCount,
         scored: scoredSummary
       }
     });

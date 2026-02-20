@@ -58,6 +58,7 @@ export interface ScoredPaper {
 export interface Env {
   ALEXCLAW_DB: D1Database;
   ALEXCLAW_RUN_QUEUE: Queue;
+  ALEXCLAW_ENRICH_QUEUE: Queue<UnpaywallEnrichmentMessage>;
   ALEXCLAW_RUN_WORKFLOW: {
     create(input: { id?: string; params: { runId: string } }): Promise<{ id: string }>;
   };
@@ -99,6 +100,13 @@ export interface SeedSelectionAttemptHistory {
   attempt: number;
   query_index: number;
   decision: SeedSelectionDecisionSnapshot;
+}
+
+export interface UnpaywallEnrichmentMessage {
+  runId: string;
+  paperId: string;
+  openalexId: string;
+  doi: string;
 }
 
 export interface SelectSeedsInput {

@@ -25,6 +25,14 @@ const runChanges = async (db: D1Database, sql: string, ...binds: unknown[]): Pro
   return Number((result as { meta?: { changes?: number } }).meta?.changes ?? 0);
 };
 
+const toNonNegativeInt = (value: unknown): number => {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 0;
+  }
+  return Math.trunc(parsed);
+};
+
 export interface RunRow {
   id: string;
   user_id: string;
@@ -33,6 +41,16 @@ export interface RunRow {
   error: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface RunEnrichmentProgress {
+  run_id: string;
+  enqueued_count: number;
+  lookup_completed_count: number;
+  lookup_found_count: number;
+  lookup_not_found_count: number;
+  lookup_failed_count: number;
+  pending_count: number;
 }
 
 export const Db = {
@@ -134,30 +152,43 @@ export const Db = {
 
   async createThesis(db: D1Database, input: {
     userId: string;
-    title: string;
     text: string;
-  }): Promise<{ id: string; title: string; created_at: string }> {
+  }): Promise<{ id: string; title: string | null; created_at: string }> {
     const id = crypto.randomUUID();
     const created = nowIso();
     await run(
       db,
-      `INSERT INTO theses (id, user_id, title, text, created_at) VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO theses (id, user_id, text, created_at) VALUES (?, ?, ?, ?)`,
       id,
       input.userId,
-      input.title,
       input.text,
       created
     );
     return {
       id,
-      title: input.title,
+      title: null,
       created_at: created
     };
   },
 
+  async updateThesisTitleOwned(db: D1Database, input: {
+    thesisId: string;
+    userId: string;
+    title: string;
+  }): Promise<boolean> {
+    const changes = await runChanges(
+      db,
+      `UPDATE theses SET title = ? WHERE id = ? AND user_id = ?`,
+      input.title,
+      input.thesisId,
+      input.userId
+    );
+    return changes > 0;
+  },
+
   async listThesesByUser(db: D1Database, userId: string): Promise<Array<{
     id: string;
-    title: string;
+    title: string | null;
     text: string;
     created_at: string;
   }>> {
@@ -170,7 +201,7 @@ export const Db = {
 
   async getThesisOwned(db: D1Database, thesisId: string, userId: string): Promise<{
     id: string;
-    title: string;
+    title: string | null;
     text: string;
     created_at: string;
   } | null> {
@@ -255,6 +286,165 @@ export const Db = {
       runId
     );
     return changes > 0;
+  },
+
+  async listRunEnrichmentProgressByUser(
+    db: D1Database,
+    userId: string
+  ): Promise<RunEnrichmentProgress[]> {
+    const rows = await all<{
+      run_id: string;
+      enqueued_count: number;
+      lookup_completed_count: number;
+      lookup_found_count: number;
+      lookup_not_found_count: number;
+      lookup_failed_count: number;
+    }>(
+      db,
+      `WITH latest_enqueue AS (
+         SELECT rs.run_id, rs.payload_json
+         FROM run_steps rs
+         INNER JOIN (
+           SELECT run_id, MAX(attempt) AS max_attempt
+           FROM run_steps
+           WHERE step_name = 'enqueue_unpaywall_enrichment' AND status = 'COMPLETED'
+           GROUP BY run_id
+         ) latest ON latest.run_id = rs.run_id AND latest.max_attempt = rs.attempt
+         WHERE rs.step_name = 'enqueue_unpaywall_enrichment' AND rs.status = 'COMPLETED'
+       ),
+       evidence_counts AS (
+         SELECT
+           e.run_id,
+           SUM(CASE WHEN e.source = 'unpaywall.lookup' THEN 1 ELSE 0 END) AS lookup_completed_count,
+           SUM(
+             CASE
+               WHEN e.source = 'unpaywall.lookup'
+                 AND COALESCE(CAST(json_extract(e.detail_json, '$.found') AS INTEGER), 0) = 1
+               THEN 1
+               ELSE 0
+             END
+           ) AS lookup_found_count,
+           SUM(
+             CASE
+               WHEN e.source = 'unpaywall.lookup'
+                 AND COALESCE(CAST(json_extract(e.detail_json, '$.found') AS INTEGER), 0) = 0
+               THEN 1
+               ELSE 0
+             END
+           ) AS lookup_not_found_count,
+           SUM(CASE WHEN e.source = 'unpaywall.lookup_failed' THEN 1 ELSE 0 END) AS lookup_failed_count
+         FROM evidence e
+         GROUP BY e.run_id
+       )
+       SELECT
+         r.id AS run_id,
+         COALESCE(CAST(json_extract(latest_enqueue.payload_json, '$.enqueuedCount') AS INTEGER), 0) AS enqueued_count,
+         COALESCE(evidence_counts.lookup_completed_count, 0) AS lookup_completed_count,
+         COALESCE(evidence_counts.lookup_found_count, 0) AS lookup_found_count,
+         COALESCE(evidence_counts.lookup_not_found_count, 0) AS lookup_not_found_count,
+         COALESCE(evidence_counts.lookup_failed_count, 0) AS lookup_failed_count
+       FROM runs r
+       LEFT JOIN latest_enqueue ON latest_enqueue.run_id = r.id
+       LEFT JOIN evidence_counts ON evidence_counts.run_id = r.id
+       WHERE r.user_id = ?`,
+      userId
+    );
+
+    return rows.map((row) => {
+      const enqueuedCount = toNonNegativeInt(row.enqueued_count);
+      const lookupCompletedCount = toNonNegativeInt(row.lookup_completed_count);
+      const lookupFailedCount = toNonNegativeInt(row.lookup_failed_count);
+      return {
+        run_id: row.run_id,
+        enqueued_count: enqueuedCount,
+        lookup_completed_count: lookupCompletedCount,
+        lookup_found_count: toNonNegativeInt(row.lookup_found_count),
+        lookup_not_found_count: toNonNegativeInt(row.lookup_not_found_count),
+        lookup_failed_count: lookupFailedCount,
+        pending_count: Math.max(0, enqueuedCount - lookupCompletedCount - lookupFailedCount)
+      };
+    });
+  },
+
+  async getRunEnrichmentProgressOwned(
+    db: D1Database,
+    runId: string,
+    userId: string
+  ): Promise<RunEnrichmentProgress | null> {
+    const row = await first<{
+      run_id: string;
+      enqueued_count: number;
+      lookup_completed_count: number;
+      lookup_found_count: number;
+      lookup_not_found_count: number;
+      lookup_failed_count: number;
+    }>(
+      db,
+      `WITH latest_enqueue AS (
+         SELECT rs.run_id, rs.payload_json
+         FROM run_steps rs
+         INNER JOIN (
+           SELECT run_id, MAX(attempt) AS max_attempt
+           FROM run_steps
+           WHERE step_name = 'enqueue_unpaywall_enrichment' AND status = 'COMPLETED'
+           GROUP BY run_id
+         ) latest ON latest.run_id = rs.run_id AND latest.max_attempt = rs.attempt
+         WHERE rs.step_name = 'enqueue_unpaywall_enrichment' AND rs.status = 'COMPLETED'
+       ),
+       evidence_counts AS (
+         SELECT
+           e.run_id,
+           SUM(CASE WHEN e.source = 'unpaywall.lookup' THEN 1 ELSE 0 END) AS lookup_completed_count,
+           SUM(
+             CASE
+               WHEN e.source = 'unpaywall.lookup'
+                 AND COALESCE(CAST(json_extract(e.detail_json, '$.found') AS INTEGER), 0) = 1
+               THEN 1
+               ELSE 0
+             END
+           ) AS lookup_found_count,
+           SUM(
+             CASE
+               WHEN e.source = 'unpaywall.lookup'
+                 AND COALESCE(CAST(json_extract(e.detail_json, '$.found') AS INTEGER), 0) = 0
+               THEN 1
+               ELSE 0
+             END
+           ) AS lookup_not_found_count,
+           SUM(CASE WHEN e.source = 'unpaywall.lookup_failed' THEN 1 ELSE 0 END) AS lookup_failed_count
+         FROM evidence e
+         GROUP BY e.run_id
+       )
+       SELECT
+         r.id AS run_id,
+         COALESCE(CAST(json_extract(latest_enqueue.payload_json, '$.enqueuedCount') AS INTEGER), 0) AS enqueued_count,
+         COALESCE(evidence_counts.lookup_completed_count, 0) AS lookup_completed_count,
+         COALESCE(evidence_counts.lookup_found_count, 0) AS lookup_found_count,
+         COALESCE(evidence_counts.lookup_not_found_count, 0) AS lookup_not_found_count,
+         COALESCE(evidence_counts.lookup_failed_count, 0) AS lookup_failed_count
+       FROM runs r
+       LEFT JOIN latest_enqueue ON latest_enqueue.run_id = r.id
+       LEFT JOIN evidence_counts ON evidence_counts.run_id = r.id
+       WHERE r.id = ? AND r.user_id = ?`,
+      runId,
+      userId
+    );
+
+    if (!row) {
+      return null;
+    }
+    const enqueuedCount = toNonNegativeInt(row.enqueued_count);
+    const lookupCompletedCount = toNonNegativeInt(row.lookup_completed_count);
+    const lookupFailedCount = toNonNegativeInt(row.lookup_failed_count);
+    return {
+      run_id: row.run_id,
+      enqueued_count: enqueuedCount,
+      lookup_completed_count: lookupCompletedCount,
+      lookup_found_count: toNonNegativeInt(row.lookup_found_count),
+      lookup_not_found_count: toNonNegativeInt(row.lookup_not_found_count),
+      lookup_failed_count: lookupFailedCount,
+      pending_count: Math.max(0, enqueuedCount - lookupCompletedCount - lookupFailedCount)
+    };
   },
 
   async updateRunStatus(db: D1Database, runId: string, status: RunStatus, error?: string): Promise<void> {

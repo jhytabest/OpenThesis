@@ -105,7 +105,7 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
 
     <h3>Papers</h3>
     <table>
-      <thead><tr><th>Title</th><th>Tier</th><th>Total</th><th>Citations</th><th>PDF</th></tr></thead>
+      <thead><tr><th>Title</th><th>Tier</th><th>Total</th><th>Cited By</th><th>Authors</th><th>References</th><th>PDF</th></tr></thead>
       <tbody id="papersBody"></tbody>
     </table>
 
@@ -113,12 +113,6 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
     <table>
       <thead><tr><th>Name</th><th>Count</th></tr></thead>
       <tbody id="authorsBody"></tbody>
-    </table>
-
-    <h3>Edges</h3>
-    <table>
-      <thead><tr><th>Source</th><th>Type</th><th>Target</th><th>Weight</th></tr></thead>
-      <tbody id="edgesBody"></tbody>
     </table>
   </section>
 </div>
@@ -301,11 +295,10 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
 
   async function loadRunDetails() {
     if (!state.activeRun) return;
-    const [run, papers, authors, edges] = await Promise.all([
+    const [run, papers, authors] = await Promise.all([
       api('/api/runs/' + state.activeRun),
       api('/api/runs/' + state.activeRun + '/papers'),
-      api('/api/runs/' + state.activeRun + '/authors'),
-      api('/api/runs/' + state.activeRun + '/edges')
+      api('/api/runs/' + state.activeRun + '/authors')
     ]);
 
     byId('detailsPanel').hidden = false;
@@ -337,6 +330,8 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
 
       row.append(cell(paper.score.total.toFixed(3)));
       row.append(cell(String(paper.citationCount || 0)));
+      row.append(cell(String((paper.authors || []).length)));
+      row.append(cell(String((paper.citations || []).length)));
 
       const linkCell = document.createElement('td');
       const safePdfUrl = safeExternalHref(paper.access.pdfUrl);
@@ -361,17 +356,6 @@ export const renderHomeHtml = (): string => `<!DOCTYPE html>
       row.append(cell(author.name));
       row.append(cell(String(author.paperCount)));
       authorsBody.append(row);
-    });
-
-    const edgesBody = byId('edgesBody');
-    clearNode(edgesBody);
-    edges.edges.slice(0, 50).forEach((edge) => {
-      const row = document.createElement('tr');
-      row.append(cell(edge.sourceTitle));
-      row.append(cell(edge.type));
-      row.append(cell(edge.targetTitle));
-      row.append(cell(edge.weight.toFixed(2)));
-      edgesBody.append(row);
     });
   }
 

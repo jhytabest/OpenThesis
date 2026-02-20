@@ -4,7 +4,7 @@ import { seedSelectionSchema } from "./zod-schemas.js";
 import type {
   CanonicalPaper,
   Env,
-  GraphEdge,
+  PaperCitation,
   SeedSelectionAttemptHistory,
   SeedSelectionQueryHistoryEntry,
   UnpaywallEnrichmentMessage
@@ -54,6 +54,26 @@ const dedupeBy = <T>(items: T[], key: (item: T) => string): T[] => {
     output.push(item);
   }
   return output;
+};
+
+const buildInternalCitationLinks = (papers: CanonicalPaper[]): PaperCitation[] => {
+  const paperIdSet = new Set(papers.map((paper) => paper.openalexId).filter(Boolean));
+  const links: PaperCitation[] = [];
+  for (const paper of papers) {
+    for (const targetOpenalexId of paper.referencedOpenalexIds) {
+      if (!targetOpenalexId || !paperIdSet.has(targetOpenalexId)) {
+        continue;
+      }
+      links.push({
+        sourceOpenalexId: paper.openalexId,
+        targetOpenalexId
+      });
+    }
+  }
+  return dedupeBy(
+    links,
+    (link) => `${link.sourceOpenalexId}|${link.targetOpenalexId}`
+  );
 };
 
 const splitQueryKeywords = (query: string): string[] =>
@@ -310,8 +330,7 @@ export async function processRun(env: Env, runId: string): Promise<void> {
             providers.reasoning.selectSeeds({
               thesisTitle: queryPlan.thesis_title,
               thesisSummary: queryPlan.thesis_summary,
-              candidates: rankedCandidates,
-              queryHistory
+              candidates: rankedCandidates
             }),
           3,
           (retryAttempt, error) =>
@@ -414,12 +433,13 @@ export async function processRun(env: Env, runId: string): Promise<void> {
     );
 
     const allPapers = dedupeBy<CanonicalPaper>(
-      [...canonicalSeeds, ...expanded.papers].filter((paper) => paper.openalexId.length > 0),
+      [...expanded.papers, ...canonicalSeeds].filter((paper) => paper.openalexId.length > 0),
       (paper) => paper.openalexId
     );
     if (allPapers.length === 0) {
       throw new Error("graph expansion resulted in 0 papers");
     }
+    const citationLinks = buildInternalCitationLinks(allPapers);
 
     const paperIdByOpenAlexId = new Map<string, string>();
 
@@ -449,6 +469,10 @@ export async function processRun(env: Env, runId: string): Promise<void> {
           authorPosition: index + 1
         });
       }
+      await Db.replacePaperCitations(env.ALEXCLAW_DB, {
+        paperId: persistedPaper.id,
+        citedOpenalexIds: paper.referencedOpenalexIds
+      });
 
       await Db.insertEvidence(env.ALEXCLAW_DB, {
         runId,
@@ -463,26 +487,6 @@ export async function processRun(env: Env, runId: string): Promise<void> {
       });
     }
 
-    const validEdges = dedupeBy<GraphEdge>(
-      expanded.edges.filter(
-        (edge) =>
-          paperIdByOpenAlexId.has(edge.sourceOpenalexId) &&
-          paperIdByOpenAlexId.has(edge.targetOpenalexId)
-      ),
-      (edge) => `${edge.sourceOpenalexId}|${edge.targetOpenalexId}|${edge.type}|${Math.round(edge.weight * 1000)}`
-    );
-
-    for (const edge of validEdges) {
-      await Db.upsertEdge(env.ALEXCLAW_DB, {
-        runId,
-        srcPaperId: paperIdByOpenAlexId.get(edge.sourceOpenalexId)!,
-        dstPaperId: paperIdByOpenAlexId.get(edge.targetOpenalexId)!,
-        edgeType: edge.type,
-        weight: edge.weight,
-        evidence: { providerEvidence: edge.evidence }
-      });
-    }
-
     const seedOpenAlexIds = new Set(canonicalSeeds.map((paper) => paper.openalexId));
     const scoredSummary: Array<{ openalexId: string; totalScore: number; tier: string }> = [];
 
@@ -494,7 +498,7 @@ export async function processRun(env: Env, runId: string): Promise<void> {
         citationCount: paper.citationCount,
         paperId: paper.openalexId,
         seedIds: seedOpenAlexIds,
-        edges: validEdges
+        citations: citationLinks
       });
 
       await Db.upsertRunPaper(env.ALEXCLAW_DB, {
@@ -546,7 +550,7 @@ export async function processRun(env: Env, runId: string): Promise<void> {
       source: "pipeline.summary",
       detail: {
         paperCount: allPapers.length,
-        edgeCount: validEdges.length,
+        citationCount: citationLinks.length,
         seedCount: canonicalSeeds.length,
         enrichmentEnqueuedCount: unpaywallEnqueueResult.enqueuedCount,
         scored: scoredSummary

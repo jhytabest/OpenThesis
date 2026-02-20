@@ -10,7 +10,7 @@ test("scorePaper marks high citation seed as foundational", () => {
     citationCount: 1500,
     paperId: "seed-a",
     seedIds: new Set(["seed-a"]),
-    edges: []
+    citations: []
   });
 
   assert.equal(scored.tier, "FOUNDATIONAL");
@@ -25,9 +25,28 @@ test("scorePaper marks weakly related low-citation paper as background", () => {
     citationCount: 2,
     paperId: "other",
     seedIds: new Set(["seed-a"]),
-    edges: []
+    citations: []
   });
 
   assert.equal(scored.tier, "BACKGROUND");
   assert.ok(scored.totalScore < 0.45);
+});
+
+test("graphScore increases when paper directly cites a seed", () => {
+  const scored = scorePaper({
+    thesisText: "alexclaw evidence ranking",
+    title: "Reliability Signals in Knowledge Graph Pipelines",
+    abstract: "citation-aware ranking strategy",
+    citationCount: 25,
+    paperId: "paper-a",
+    seedIds: new Set(["seed-a"]),
+    citations: [
+      {
+        sourceOpenalexId: "paper-a",
+        targetOpenalexId: "seed-a"
+      }
+    ]
+  });
+
+  assert.ok(scored.graphScore >= 0.65);
 });

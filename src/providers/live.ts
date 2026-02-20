@@ -222,8 +222,7 @@ const buildLiveReasoningProvider = (env: Env) => {
         user: LlmPrompts.seedSelectionUser({
           thesisTitle: input.thesisTitle,
           thesisSummary: input.thesisSummary,
-          candidatesJson: formatIndexedCandidates(input.candidates),
-          queryHistoryJson: JSON.stringify(input.queryHistory, null, 2),
+          candidatesJson: formatIndexedCandidates(input.candidates)
         }),
         prompt: seedSelectionPrompt,
         parse: (value) => {

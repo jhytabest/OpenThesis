@@ -6,14 +6,12 @@ export const LlmPrompts = {
     thesisTitle: string;
     thesisSummary: string;
     candidatesJson: string;
-    queryHistoryJson: string;
   }): string {
     const {
       thesisTitle,
       thesisSummary,
-      candidatesJson,
-      queryHistoryJson
+      candidatesJson
     } = input;
-    return `Thesis title:\n${thesisTitle}\n\nThesis summary:\n${thesisSummary}\n\nQuery history metadata (oldest to newest; newest is current query run):\n${queryHistoryJson}\n\nCandidates (current run, titles only):\n${candidatesJson}`;
+    return `Thesis title:\n${thesisTitle}\n\nThesis summary:\n${thesisSummary}\n\nCandidates (titles only):\n${candidatesJson}`;
   }
 } as const;

@@ -460,7 +460,6 @@ export const Db = {
 
   async clearRunData(db: D1Database, runId: string): Promise<void> {
     await run(db, `DELETE FROM run_papers WHERE run_id = ?`, runId);
-    await run(db, `DELETE FROM edges WHERE run_id = ?`, runId);
     await run(db, `DELETE FROM evidence WHERE run_id = ?`, runId);
     await run(db, `DELETE FROM run_steps WHERE run_id = ?`, runId);
   },
@@ -639,6 +638,24 @@ export const Db = {
     );
   },
 
+  async replacePaperCitations(db: D1Database, input: {
+    paperId: string;
+    citedOpenalexIds: string[];
+  }): Promise<void> {
+    await run(db, `DELETE FROM paper_citations WHERE paper_id = ?`, input.paperId);
+
+    const dedupedIds = [...new Set(input.citedOpenalexIds.filter(Boolean))];
+    for (const citedOpenalexId of dedupedIds) {
+      await run(
+        db,
+        `INSERT INTO paper_citations (paper_id, cited_openalex_id)
+         VALUES (?, ?)`,
+        input.paperId,
+        citedOpenalexId
+      );
+    }
+  },
+
   async upsertRunPaper(db: D1Database, input: {
     runId: string;
     paperId: string;
@@ -666,32 +683,6 @@ export const Db = {
       input.citationScore,
       input.totalScore,
       input.tier
-    );
-  },
-
-  async upsertEdge(db: D1Database, input: {
-    runId: string;
-    srcPaperId: string;
-    dstPaperId: string;
-    edgeType: "REFERENCE" | "CITATION" | "SHARED_AUTHOR";
-    weight: number;
-    evidence: unknown;
-  }): Promise<void> {
-    await run(
-      db,
-      `INSERT INTO edges (id, run_id, src_paper_id, dst_paper_id, edge_type, weight, evidence_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(run_id, src_paper_id, dst_paper_id, edge_type)
-       DO UPDATE SET
-         weight=excluded.weight,
-         evidence_json=excluded.evidence_json`,
-      crypto.randomUUID(),
-      input.runId,
-      input.srcPaperId,
-      input.dstPaperId,
-      input.edgeType,
-      input.weight,
-      JSON.stringify(input.evidence)
     );
   },
 
@@ -816,33 +807,56 @@ export const Db = {
     );
   },
 
-  async listRunEdgesOwned(db: D1Database, runId: string, userId: string): Promise<Array<{
-    edge_id: string;
-    source_openalex_id: string;
-    source_title: string;
-    target_openalex_id: string;
-    target_title: string;
-    edge_type: "REFERENCE" | "CITATION" | "SHARED_AUTHOR";
-    weight: number;
-    evidence_json: string;
+  async listRunPaperAuthorsOwned(db: D1Database, runId: string, userId: string): Promise<Array<{
+    paper_id: string;
+    author_id: string;
+    openalex_id: string | null;
+    name: string;
+    orcid: string | null;
+    author_position: number;
   }>> {
     return all(
       db,
       `SELECT
-         e.id AS edge_id,
-         src.openalex_id AS source_openalex_id,
-         src.title AS source_title,
-         dst.openalex_id AS target_openalex_id,
-         dst.title AS target_title,
-         e.edge_type,
-         e.weight,
-         e.evidence_json
+         p.id AS paper_id,
+         a.id AS author_id,
+         a.openalex_id,
+         a.name,
+         a.orcid,
+         pa.author_position
        FROM runs r
-       INNER JOIN edges e ON e.run_id = r.id
-       INNER JOIN papers src ON src.id = e.src_paper_id
-       INNER JOIN papers dst ON dst.id = e.dst_paper_id
+       INNER JOIN run_papers rp ON rp.run_id = r.id
+       INNER JOIN papers p ON p.id = rp.paper_id
+       INNER JOIN paper_authors pa ON pa.paper_id = p.id
+       INNER JOIN authors a ON a.id = pa.author_id
        WHERE r.id = ? AND r.user_id = ?
-       ORDER BY e.weight DESC, e.edge_type ASC`,
+       ORDER BY p.title ASC, pa.author_position ASC`,
+      runId,
+      userId
+    );
+  },
+
+  async listRunPaperCitationsOwned(db: D1Database, runId: string, userId: string): Promise<Array<{
+    paper_id: string;
+    cited_openalex_id: string;
+    cited_title: string | null;
+    cited_in_run: number;
+  }>> {
+    return all(
+      db,
+      `SELECT
+         src.id AS paper_id,
+         pc.cited_openalex_id,
+         dst.title AS cited_title,
+         CASE WHEN rp_cited.paper_id IS NULL THEN 0 ELSE 1 END AS cited_in_run
+       FROM runs r
+       INNER JOIN run_papers rp_src ON rp_src.run_id = r.id
+       INNER JOIN papers src ON src.id = rp_src.paper_id
+       INNER JOIN paper_citations pc ON pc.paper_id = src.id
+       LEFT JOIN papers dst ON dst.openalex_id = pc.cited_openalex_id
+       LEFT JOIN run_papers rp_cited ON rp_cited.run_id = r.id AND rp_cited.paper_id = dst.id
+       WHERE r.id = ? AND r.user_id = ?
+       ORDER BY src.title ASC, pc.cited_openalex_id ASC`,
       runId,
       userId
     );

@@ -364,7 +364,42 @@ app.get("/api/runs/:runId/papers", async (c) => {
     return json({ error: "Run not found" }, 404);
   }
 
-  const papers = await Db.listRunPapersOwned(c.env.ALEXCLAW_DB, runId, user.id);
+  const [papers, paperAuthors, paperCitations] = await Promise.all([
+    Db.listRunPapersOwned(c.env.ALEXCLAW_DB, runId, user.id),
+    Db.listRunPaperAuthorsOwned(c.env.ALEXCLAW_DB, runId, user.id),
+    Db.listRunPaperCitationsOwned(c.env.ALEXCLAW_DB, runId, user.id)
+  ]);
+
+  const authorsByPaperId = new Map<
+    string,
+    Array<{ id: string; openalexId: string | null; name: string; orcid: string | null; position: number }>
+  >();
+  for (const author of paperAuthors) {
+    const bucket = authorsByPaperId.get(author.paper_id) ?? [];
+    bucket.push({
+      id: author.author_id,
+      openalexId: author.openalex_id,
+      name: author.name,
+      orcid: author.orcid,
+      position: author.author_position
+    });
+    authorsByPaperId.set(author.paper_id, bucket);
+  }
+
+  const citationsByPaperId = new Map<
+    string,
+    Array<{ openalexId: string; title: string | null; inRun: boolean }>
+  >();
+  for (const citation of paperCitations) {
+    const bucket = citationsByPaperId.get(citation.paper_id) ?? [];
+    bucket.push({
+      openalexId: citation.cited_openalex_id,
+      title: citation.cited_title,
+      inRun: citation.cited_in_run === 1
+    });
+    citationsByPaperId.set(citation.paper_id, bucket);
+  }
+
   return json({
     papers: papers.map((paper) => ({
       id: paper.paper_id,
@@ -387,7 +422,9 @@ app.get("/api/runs/:runId/papers", async (c) => {
         pdfUrl: paper.pdf_url,
         oaStatus: paper.oa_status,
         license: paper.license
-      }
+      },
+      authors: authorsByPaperId.get(paper.paper_id) ?? [],
+      citations: citationsByPaperId.get(paper.paper_id) ?? []
     }))
   });
 });
@@ -412,33 +449,6 @@ app.get("/api/runs/:runId/authors", async (c) => {
       name: author.name,
       orcid: author.orcid,
       paperCount: author.paper_count
-    }))
-  });
-});
-
-app.get("/api/runs/:runId/edges", async (c) => {
-  const user = await Auth.resolveUser(c);
-  if (!user) {
-    return json({ error: "Unauthorized" }, 401);
-  }
-
-  const runId = c.req.param("runId");
-  const run = await Db.getRunOwned(c.env.ALEXCLAW_DB, runId, user.id);
-  if (!run) {
-    return json({ error: "Run not found" }, 404);
-  }
-
-  const edges = await Db.listRunEdgesOwned(c.env.ALEXCLAW_DB, runId, user.id);
-  return json({
-    edges: edges.map((edge) => ({
-      id: edge.edge_id,
-      sourceOpenalexId: edge.source_openalex_id,
-      sourceTitle: edge.source_title,
-      targetOpenalexId: edge.target_openalex_id,
-      targetTitle: edge.target_title,
-      type: edge.edge_type,
-      weight: edge.weight,
-      evidence: safeJsonParse(edge.evidence_json, null)
     }))
   });
 });

@@ -15,11 +15,11 @@ Production-oriented MVP for thesis-to-paper-graph using:
 - Pipeline with:
   - OpenAI Responses API strict-JSON steps
   - Semantic Scholar search
-  - OpenAlex canonicalization + graph expansion
+  - OpenAlex canonicalization + one-generation graph expansion
   - Relevance scoring + tiering
   - Asynchronous Unpaywall PDF enrichment via queue
 - Traceable run evidence and step audit trail
-- Minimal UI to inspect papers/authors/edges
+- Minimal UI to inspect papers/authors
 - Global Semantic Scholar throttle at 1 request/second (D1-backed lease)
 - Semantic Scholar query generation aligned with Graph API rules (plain text, no boolean syntax, no hyphenated terms)
 
@@ -153,8 +153,9 @@ Core:
 - `GET /api/runs/:runId`
 - `GET /api/runs/:runId/papers`
 - `GET /api/runs/:runId/authors`
-- `GET /api/runs/:runId/edges`
 - `GET /api/runs/:runId/evidence`
+
+`GET /api/runs/:runId/papers` returns nested `authors` and `citations` arrays for each paper.
 
 Run responses include `enrichment` counters (`enqueued`, `completed`, `found`, `notFound`, `failed`, `pending`) so queued Unpaywall progress is visible even after the main graph run reaches `COMPLETED`.
 

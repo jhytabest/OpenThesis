@@ -8,8 +8,6 @@ export type RunStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
 
 export type RelevanceTier = "FOUNDATIONAL" | "DEPTH" | "BACKGROUND";
 
-export type EdgeType = "REFERENCE" | "CITATION" | "SHARED_AUTHOR";
-
 export interface SessionUser {
   id: string;
   email: string;
@@ -37,14 +35,12 @@ export interface CanonicalPaper {
   citationCount?: number;
   fieldsOfStudy: string[];
   authors: Array<{ openalexId?: string; name: string; orcid?: string }>;
+  referencedOpenalexIds: string[];
 }
 
-export interface GraphEdge {
+export interface PaperCitation {
   sourceOpenalexId: string;
   targetOpenalexId: string;
-  type: EdgeType;
-  weight: number;
-  evidence: string;
 }
 
 export interface ScoredPaper {
@@ -113,7 +109,6 @@ export interface SelectSeedsInput {
   thesisTitle: string;
   thesisSummary: string;
   candidates: CandidatePaper[];
-  queryHistory: SeedSelectionQueryHistoryEntry[];
 }
 
 export interface ReasoningProvider {
@@ -129,7 +124,6 @@ export interface OpenAlexProvider {
   resolveSeeds(seeds: CandidatePaper[]): Promise<CanonicalPaper[]>;
   expandGraph(seedWorks: CanonicalPaper[]): Promise<{
     papers: CanonicalPaper[];
-    edges: GraphEdge[];
   }>;
 }
 

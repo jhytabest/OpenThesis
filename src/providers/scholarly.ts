@@ -3,7 +3,6 @@ import type {
   CandidatePaper,
   CanonicalPaper,
   Env,
-  GraphEdge,
   OpenAlexProvider,
   SemanticScholarProvider
 } from "../lib/types.js";
@@ -83,8 +82,8 @@ const mapOpenAlexWork = (work: OpenAlexWork, semanticScholarId?: string): Canoni
       openalexId: authorship.author?.id,
       name: authorship.author?.display_name ?? "Unknown",
       orcid: authorship.author?.orcid
-    }))
-    .slice(0, 8)
+    })),
+  referencedOpenalexIds: [...new Set((work.referenced_works ?? []).filter(Boolean))]
 });
 
 const sanitizePlainSearchQuery = (value: string): string =>
@@ -206,29 +205,6 @@ const tokenizeTitle = (value: string): Set<string> =>
       .filter((token) => token.length >= 4)
   );
 
-const isRelatedToSeed = (seed: CanonicalPaper, candidate: CanonicalPaper): boolean => {
-  const seedFields = new Set(seed.fieldsOfStudy.map((field) => field.toLowerCase()));
-  const candidateFields = new Set(candidate.fieldsOfStudy.map((field) => field.toLowerCase()));
-  for (const field of seedFields) {
-    if (candidateFields.has(field)) {
-      return true;
-    }
-  }
-
-  const seedTokens = tokenizeTitle(seed.title);
-  const candidateTokens = tokenizeTitle(candidate.title);
-  let overlap = 0;
-  for (const token of seedTokens) {
-    if (candidateTokens.has(token)) {
-      overlap += 1;
-    }
-    if (overlap >= 2) {
-      return true;
-    }
-  }
-  return false;
-};
-
 const titleSimilarity = (left: string, right: string): number => {
   const leftTokens = tokenizeTitle(left);
   const rightTokens = tokenizeTitle(right);
@@ -270,18 +246,50 @@ export const buildLiveOpenAlexProvider = (
   }
 
   const baseUrl = "https://api.openalex.org";
+  const MAX_REFERENCES_PER_SEED = 100;
+  const MAX_CITING_PER_SEED = 100;
 
   const withAuth = (url: URL): URL => {
     url.searchParams.set("api_key", env.OPENALEX_API_KEY!);
     return url;
   };
 
-  const fetchWorks = async (filter: string, perPage: number): Promise<OpenAlexWork[]> => {
+  const fetchWorksPage = async (
+    filter: string,
+    perPage: number,
+    cursor?: string
+  ): Promise<{ results: OpenAlexWork[]; nextCursor: string | null }> => {
     const url = withAuth(new URL(`${baseUrl}/works`));
     url.searchParams.set("filter", filter);
     url.searchParams.set("per-page", String(perPage));
-    const payload = await fetchJson<{ results?: OpenAlexWork[] }>(url.toString(), { method: "GET" });
-    return payload.results ?? [];
+    if (cursor) {
+      url.searchParams.set("cursor", cursor);
+    }
+    const payload = await fetchJson<{ results?: OpenAlexWork[]; meta?: { next_cursor?: string | null } }>(
+      url.toString(),
+      { method: "GET" }
+    );
+    return {
+      results: payload.results ?? [],
+      nextCursor: payload.meta?.next_cursor ?? null
+    };
+  };
+
+  const fetchWorks = async (filter: string, limit: number): Promise<OpenAlexWork[]> => {
+    const output: OpenAlexWork[] = [];
+    let cursor: string | undefined = "*";
+
+    while (output.length < limit && cursor) {
+      const pageSize = Math.min(200, limit - output.length);
+      const page = await fetchWorksPage(filter, pageSize, cursor);
+      if (page.results.length === 0) {
+        break;
+      }
+      output.push(...page.results);
+      cursor = page.nextCursor ?? undefined;
+    }
+
+    return output.slice(0, limit);
   };
 
   const fetchWorkById = async (openalexId: string): Promise<OpenAlexWork | null> => {
@@ -329,79 +337,35 @@ export const buildLiveOpenAlexProvider = (
       return resolved;
     },
 
-    async expandGraph(seedWorks: CanonicalPaper[]): Promise<{ papers: CanonicalPaper[]; edges: GraphEdge[] }> {
+    async expandGraph(seedWorks: CanonicalPaper[]): Promise<{ papers: CanonicalPaper[] }> {
       const papers: CanonicalPaper[] = [];
-      const edges: GraphEdge[] = [];
 
       for (const seed of seedWorks) {
         const seedWork = await fetchWorkById(seed.openalexId);
         if (!seedWork?.id) {
           continue;
         }
+        papers.push(mapOpenAlexWork(seedWork, seed.semanticScholarId));
 
-        const references = (seedWork.referenced_works ?? []).slice(0, 10);
+        const references = (seedWork.referenced_works ?? []).slice(0, MAX_REFERENCES_PER_SEED);
         for (const referenceId of references) {
           const ref = await fetchWorkById(referenceId);
           if (!ref?.id) {
             continue;
           }
-          const mapped = mapOpenAlexWork(ref);
-          if (!isRelatedToSeed(seed, mapped)) {
-            continue;
-          }
-          papers.push(mapped);
-          edges.push({
-            sourceOpenalexId: seed.openalexId,
-            targetOpenalexId: ref.id,
-            type: "REFERENCE",
-            weight: 0.9,
-            evidence: "openalex:referenced_works"
-          });
+          papers.push(mapOpenAlexWork(ref));
         }
 
-        const citing = await fetchWorks(`cites:${seed.openalexId}`, 10);
+        const citing = await fetchWorks(`cites:${seed.openalexId}`, MAX_CITING_PER_SEED);
         for (const citedBy of citing) {
           if (!citedBy.id) {
             continue;
           }
-          const mapped = mapOpenAlexWork(citedBy);
-          if (!isRelatedToSeed(seed, mapped)) {
-            continue;
-          }
-          papers.push(mapped);
-          edges.push({
-            sourceOpenalexId: citedBy.id,
-            targetOpenalexId: seed.openalexId,
-            type: "CITATION",
-            weight: 0.8,
-            evidence: "openalex:cites"
-          });
-        }
-
-        const authorId = seedWork.authorships?.[0]?.author?.id;
-        if (authorId) {
-          const shared = await fetchWorks(`authorships.author.id:${authorId}`, 8);
-          for (const work of shared) {
-            if (!work.id || work.id === seed.openalexId) {
-              continue;
-            }
-            const mapped = mapOpenAlexWork(work);
-            if (!isRelatedToSeed(seed, mapped)) {
-              continue;
-            }
-            papers.push(mapped);
-            edges.push({
-              sourceOpenalexId: seed.openalexId,
-              targetOpenalexId: work.id,
-              type: "SHARED_AUTHOR",
-              weight: 0.7,
-              evidence: "openalex:shared_author"
-            });
-          }
+          papers.push(mapOpenAlexWork(citedBy));
         }
       }
 
-      return { papers, edges };
+      return { papers };
     }
   };
 };

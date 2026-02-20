@@ -8,7 +8,7 @@ import type {
   CandidatePaper,
   CanonicalPaper,
   Env,
-  GraphEdge,
+  PaperCitation,
   SeedSelectionAttemptHistory,
   SeedSelectionQueryHistoryEntry
 } from "../src/lib/types.js";
@@ -40,6 +40,23 @@ const dedupeBy = <T>(items: T[], key: (item: T) => string): T[] => {
     output.push(item);
   }
   return output;
+};
+
+const buildInternalCitationLinks = (papers: CanonicalPaper[]): PaperCitation[] => {
+  const paperIdSet = new Set(papers.map((paper) => paper.openalexId).filter(Boolean));
+  const links: PaperCitation[] = [];
+  for (const paper of papers) {
+    for (const targetOpenalexId of paper.referencedOpenalexIds) {
+      if (!targetOpenalexId || !paperIdSet.has(targetOpenalexId)) {
+        continue;
+      }
+      links.push({
+        sourceOpenalexId: paper.openalexId,
+        targetOpenalexId
+      });
+    }
+  }
+  return dedupeBy(links, (link) => `${link.sourceOpenalexId}|${link.targetOpenalexId}`);
 };
 
 const sleep = (ms: number): Promise<void> =>
@@ -323,8 +340,7 @@ const executeLiveFlow = async (input: {
       providers.reasoning.selectSeeds({
         thesisTitle: queryPlan.thesis_title,
         thesisSummary: queryPlan.thesis_summary,
-        candidates: rankedCandidates,
-        queryHistory
+        candidates: rankedCandidates
       })
     );
     stepData[`seedSelectionAttempt${attempt}`] = attemptSelection;
@@ -403,19 +419,16 @@ const executeLiveFlow = async (input: {
   const expanded = await withRetries("openalex_expand", () =>
     providers.openAlex.expandGraph(canonicalSeeds)
   );
-  stepData.expandedCounts = { papers: expanded.papers.length, edges: expanded.edges.length };
+  stepData.expandedCounts = { papers: expanded.papers.length };
 
   const allPapers = dedupeBy<CanonicalPaper>(
-    [...canonicalSeeds, ...expanded.papers].filter((paper) => paper.openalexId.length > 0),
+    [...expanded.papers, ...canonicalSeeds].filter((paper) => paper.openalexId.length > 0),
     (paper) => paper.openalexId
   );
   if (allPapers.length === 0) {
     throw new Error("graph expansion resulted in 0 papers");
   }
-  const allEdges = dedupeBy<GraphEdge>(
-    expanded.edges.filter((edge) => edge.sourceOpenalexId && edge.targetOpenalexId),
-    (edge) => `${edge.sourceOpenalexId}|${edge.targetOpenalexId}|${edge.type}`
-  );
+  const citationLinks = buildInternalCitationLinks(allPapers);
 
   const seedIds = new Set(canonicalSeeds.map((seed) => seed.openalexId));
   const scored = allPapers
@@ -428,7 +441,7 @@ const executeLiveFlow = async (input: {
         citationCount: paper.citationCount,
         paperId: paper.openalexId,
         seedIds,
-        edges: allEdges
+        citations: citationLinks
       })
     }))
     .sort((a, b) => b.score.totalScore - a.score.totalScore);
@@ -498,7 +511,7 @@ const executeLiveFlow = async (input: {
       selectedSeeds: seedsToResolve.length,
       canonicalSeeds: canonicalSeeds.length,
       graphPapers: allPapers.length,
-      graphEdges: allEdges.length,
+      citationLinks: citationLinks.length,
       enrichmentEnqueued: enrichmentJobs.length,
       enrichmentCompleted: enrichment.filter((entry) => entry.status === "completed").length,
       enrichmentFailed: enrichment.filter((entry) => entry.status === "failed").length
@@ -521,7 +534,7 @@ const executeLiveFlow = async (input: {
   writeJson(path.join(runDir, "steps.json"), stepData);
   writeJson(path.join(runDir, "result.json"), summary);
   console.log(
-    `[${thesis.id}] done: ${summary.counts.graphPapers} papers, ${summary.counts.graphEdges} edges, top="${summary.topPapers[0]?.title ?? "n/a"}"`
+    `[${thesis.id}] done: ${summary.counts.graphPapers} papers, ${summary.counts.citationLinks} citation links, top="${summary.topPapers[0]?.title ?? "n/a"}"`
   );
 };
 

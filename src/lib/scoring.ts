@@ -1,4 +1,4 @@
-import type { GraphEdge, RelevanceTier, ScoredPaper } from "./types.js";
+import type { PaperCitation, RelevanceTier, ScoredPaper } from "./types.js";
 
 const tokenize = (value: string): string[] =>
   value
@@ -32,27 +32,23 @@ export function citationScore(citationCount: number | undefined): number {
 export function graphScore(
   paperId: string,
   seedIds: Set<string>,
-  edges: GraphEdge[]
+  citations: PaperCitation[]
 ): number {
   if (seedIds.has(paperId)) {
     return 1;
   }
-  const directTypes = new Set(
-    edges
-      .filter((edge) => edge.sourceOpenalexId === paperId || edge.targetOpenalexId === paperId)
-      .filter((edge) => seedIds.has(edge.sourceOpenalexId) || seedIds.has(edge.targetOpenalexId))
-      .map((edge) => edge.type)
-  );
 
-  if (directTypes.size > 0) {
-    if (directTypes.has("SHARED_AUTHOR")) {
-      return 0.75;
-    }
+  const directlyConnectedToSeed = citations.some(
+    (citation) =>
+      (citation.sourceOpenalexId === paperId && seedIds.has(citation.targetOpenalexId)) ||
+      (citation.targetOpenalexId === paperId && seedIds.has(citation.sourceOpenalexId))
+  );
+  if (directlyConnectedToSeed) {
     return 0.65;
   }
 
-  const connected = edges.some(
-    (edge) => edge.sourceOpenalexId === paperId || edge.targetOpenalexId === paperId
+  const connected = citations.some(
+    (citation) => citation.sourceOpenalexId === paperId || citation.targetOpenalexId === paperId
   );
   return connected ? 0.35 : 0.1;
 }
@@ -74,10 +70,10 @@ export function scorePaper(input: {
   citationCount?: number;
   paperId: string;
   seedIds: Set<string>;
-  edges: GraphEdge[];
+  citations: PaperCitation[];
 }): ScoredPaper {
   const lexical = lexicalOverlapScore(input.thesisText, `${input.title} ${input.abstract ?? ""}`);
-  const graph = graphScore(input.paperId, input.seedIds, input.edges);
+  const graph = graphScore(input.paperId, input.seedIds, input.citations);
   const citation = citationScore(input.citationCount);
   const total = 0.45 * lexical + 0.35 * graph + 0.2 * citation;
   return {

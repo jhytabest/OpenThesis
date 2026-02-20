@@ -183,6 +183,28 @@ app.get("/api/theses", async (c) => {
   });
 });
 
+app.get("/api/theses/:thesisId", async (c) => {
+  const user = await Auth.resolveUser(c);
+  if (!user) {
+    return json({ error: "Unauthorized" }, 401);
+  }
+
+  const thesisId = c.req.param("thesisId");
+  const thesis = await Db.getThesisOwned(c.env.ALEXCLAW_DB, thesisId, user.id);
+  if (!thesis) {
+    return json({ error: "Thesis not found" }, 404);
+  }
+
+  return json({
+    thesis: {
+      id: thesis.id,
+      title: thesis.title,
+      text: thesis.text,
+      createdAt: thesis.created_at
+    }
+  });
+});
+
 app.post("/api/theses", async (c) => {
   const user = await Auth.resolveUser(c);
   if (!user) {

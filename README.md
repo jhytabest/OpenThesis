@@ -147,6 +147,7 @@ Auth:
 Core:
 
 - `GET /api/theses`
+- `GET /api/theses/:thesisId`
 - `POST /api/theses`
 - `POST /api/theses/:thesisId/runs`
 - `GET /api/runs`

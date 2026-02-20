@@ -118,7 +118,7 @@ const mapSemanticScholarResponse = (payload: {
   data?: SemanticScholarPaper[];
 }): CandidatePaper[] =>
   (payload.data ?? [])
-    .filter((paper) => (paper.citationCount ?? 0) > 50)
+    .filter((paper) => (paper.citationCount ?? 0) > 10)
     .filter((paper): paper is Required<Pick<SemanticScholarPaper, "paperId" | "title">> & SemanticScholarPaper =>
       Boolean(paper.paperId && paper.title)
     )

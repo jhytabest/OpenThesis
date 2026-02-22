@@ -110,6 +110,7 @@ export const mapProjectPaperResponse = (paper: ProjectPaperRow) => ({
   bookmarked: paper.bookmarked === 1,
   inReadingList: paper.in_reading_list === 1,
   tags: safeJsonParse<string[]>(paper.tags_json, []),
+  comment: paper.note_text,
   note: paper.note_text,
   isDeleted: paper.is_deleted === 1,
   commentCount: Number(paper.comment_count ?? 0),

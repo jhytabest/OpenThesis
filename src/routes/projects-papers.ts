@@ -73,6 +73,7 @@ export function registerProjectPaperRoutes(app: App): void {
       fieldsOfStudy?: unknown;
       bookmarked?: boolean;
       inReadingList?: boolean;
+      comment?: string;
       note?: string;
       tags?: unknown;
     };
@@ -92,7 +93,7 @@ export function registerProjectPaperRoutes(app: App): void {
       fieldsOfStudy: normalizeStringArray(body.fieldsOfStudy),
       bookmarked: body.bookmarked,
       inReadingList: body.inReadingList,
-      noteText: body.note,
+      noteText: body.comment ?? body.note,
       tags: normalizeStringArray(body.tags)
     });
 
@@ -128,6 +129,7 @@ export function registerProjectPaperRoutes(app: App): void {
       fieldsOfStudy?: unknown;
       bookmarked?: boolean;
       inReadingList?: boolean;
+      comment?: string | null;
       note?: string | null;
       tags?: unknown;
       isDeleted?: boolean;
@@ -150,7 +152,7 @@ export function registerProjectPaperRoutes(app: App): void {
         fieldsOfStudy: Array.isArray(body.fieldsOfStudy) ? normalizeStringArray(body.fieldsOfStudy) : undefined,
         bookmarked: body.bookmarked,
         inReadingList: body.inReadingList,
-        noteText: body.note,
+        noteText: body.comment ?? body.note,
         tags: Array.isArray(body.tags) ? normalizeStringArray(body.tags) : undefined,
         isDeleted: body.isDeleted
       }

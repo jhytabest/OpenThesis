@@ -67,6 +67,8 @@ test("mapProjectPaperResponse maps paper row and parses JSON fields", () => {
   assert.deepEqual(mapped.tags, ["methodology"]);
   assert.equal(mapped.bookmarked, true);
   assert.equal(mapped.inReadingList, false);
+  assert.equal(mapped.comment, "note");
+  assert.equal(mapped.note, "note");
   assert.equal(mapped.commentCount, 3);
   assert.equal(mapped.score.total, 0.62);
 });

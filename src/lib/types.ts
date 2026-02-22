@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import {
-  queryPlanSchema,
+  thesisSummarySchema,
+  queryGenerationSchema,
   seedSelectionSchema
 } from "./zod-schemas.js";
 
@@ -59,8 +60,10 @@ export interface Env {
     create(input: { id?: string; params: { runId: string } }): Promise<{ id: string }>;
   };
   OPENAI_API_KEY?: string;
-  OPENAI_PROMPT_ID_QUERY_PLAN?: string;
-  OPENAI_PROMPT_VERSION_QUERY_PLAN?: string;
+  OPENAI_PROMPT_ID_THESIS_SUMMARY?: string;
+  OPENAI_PROMPT_VERSION_THESIS_SUMMARY?: string;
+  OPENAI_PROMPT_ID_QUERY_GENERATION?: string;
+  OPENAI_PROMPT_VERSION_QUERY_GENERATION?: string;
   OPENAI_PROMPT_ID_SEED_SELECTION?: string;
   OPENAI_PROMPT_VERSION_SEED_SELECTION?: string;
   SEMANTIC_SCHOLAR_API_KEY?: string;
@@ -69,9 +72,12 @@ export interface Env {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   INTERNAL_API_TOKEN?: string;
+  CHAT_BACKEND_URL?: string;
+  CHAT_BACKEND_BEARER_TOKEN?: string;
 }
 
-export type QueryPlan = z.infer<typeof queryPlanSchema>;
+export type ThesisSummary = z.infer<typeof thesisSummarySchema>;
+export type QueryGeneration = z.infer<typeof queryGenerationSchema>;
 export type SeedSelection = z.infer<typeof seedSelectionSchema>;
 
 export interface SeedSelectionSearchSnapshot {
@@ -82,7 +88,7 @@ export interface SeedSelectionSearchSnapshot {
 
 export interface SeedSelectionQueryHistoryEntry {
   query_index: number;
-  source: "query_plan" | "shorten_specific" | "shorten_broad";
+  source: "query_generation" | "drop_first" | "drop_last";
   search: SeedSelectionSearchSnapshot;
 }
 
@@ -111,8 +117,14 @@ export interface SelectSeedsInput {
   candidates: CandidatePaper[];
 }
 
+export interface GenerateQueryInput {
+  thesisTitle: string;
+  thesisSummary: string;
+}
+
 export interface ReasoningProvider {
-  generateQueryPlan(thesisText: string): Promise<QueryPlan>;
+  summarizeThesis(thesisText: string): Promise<ThesisSummary>;
+  generateQuery(input: GenerateQueryInput): Promise<QueryGeneration>;
   selectSeeds(input: SelectSeedsInput): Promise<SeedSelection>;
 }
 
@@ -121,6 +133,7 @@ export interface SemanticScholarProvider {
 }
 
 export interface OpenAlexProvider {
+  search(query: string, fieldsOfStudy: string[], limit: number): Promise<CandidatePaper[]>;
   resolveSeeds(seeds: CandidatePaper[]): Promise<CanonicalPaper[]>;
   expandGraph(seedWorks: CanonicalPaper[]): Promise<{
     papers: CanonicalPaper[];

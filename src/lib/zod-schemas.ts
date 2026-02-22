@@ -27,16 +27,28 @@ export const semanticScholarFieldsOfStudy = [
 ] as const;
 
 const semanticScholarFieldSchema = z.enum(semanticScholarFieldsOfStudy);
-const keywordQueryPattern = /^[A-Za-z0-9][A-Za-z0-9-]*(?:\s+[A-Za-z0-9][A-Za-z0-9-]*){5,9}$/;
-const keywordQuerySchema = z
-  .string()
-  .trim()
-  .regex(keywordQueryPattern, "must contain 6 to 10 space-separated keywords");
+const queryTermPattern = /^[A-Za-z0-9][A-Za-z0-9-]*(?:\s+[A-Za-z0-9][A-Za-z0-9-]*){0,3}$/;
+const queryTermsSchema = z
+  .array(
+    z
+      .string()
+      .trim()
+      .regex(queryTermPattern, "must be 1 to 4 words with alphanumeric tokens and optional hyphens")
+  )
+  .min(6)
+  .max(10)
+  .refine(
+    (terms) => new Set(terms.map((term) => term.toLowerCase())).size === terms.length,
+    "terms must be unique"
+  );
 
-export const queryPlanSchema = z.object({
+export const thesisSummarySchema = z.object({
   thesis_title: z.string().min(5),
-  thesis_summary: z.string().min(30),
-  query: keywordQuerySchema,
+  thesis_summary: z.string().min(30)
+});
+
+export const queryGenerationSchema = z.object({
+  terms: queryTermsSchema,
   fields_of_study: z.array(semanticScholarFieldSchema).min(1).max(6)
 });
 

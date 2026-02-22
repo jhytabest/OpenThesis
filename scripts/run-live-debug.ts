@@ -27,6 +27,20 @@ type CliOptions = {
 };
 
 const now = (): string => new Date().toISOString();
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const projectRoot = path.resolve(scriptDir, "..");
+const SEMANTIC_SCHOLAR_MIN_INTERVAL_MS = 1000;
+const LOCAL_RATE_LIMIT_DIR = path.join(projectRoot, ".tmp");
+const LOCAL_RATE_LIMIT_STATE_FILE = path.join(
+  LOCAL_RATE_LIMIT_DIR,
+  "semantic-scholar-rate-limit.json"
+);
+const LOCAL_RATE_LIMIT_LOCK_DIR = path.join(
+  LOCAL_RATE_LIMIT_DIR,
+  "semantic-scholar-rate-limit.lock"
+);
+const LOCAL_RATE_LIMIT_STALE_LOCK_MS = 30_000;
+let processNextSemanticScholarAllowedAt = 0;
 
 const dedupeBy = <T>(items: T[], key: (item: T) => string): T[] => {
   const seen = new Set<string>();
@@ -62,14 +76,94 @@ const buildInternalCitationLinks = (papers: CanonicalPaper[]): PaperCitation[] =
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 const MIN_REQUIRED_SEEDS = 1;
-const MIN_QUERY_KEYWORDS = 3;
+const MIN_QUERY_TERMS = 3;
 const SELECTION_WINDOW = 30;
 
-const splitQueryKeywords = (query: string): string[] =>
-  query
-    .trim()
-    .split(/\s+/)
-    .map((keyword) => keyword.trim())
+const ensureLocalRateLimitDir = (): void => {
+  fs.mkdirSync(LOCAL_RATE_LIMIT_DIR, { recursive: true });
+};
+
+const tryBreakStaleLock = (): void => {
+  try {
+    const lockStats = fs.statSync(LOCAL_RATE_LIMIT_LOCK_DIR);
+    if (Date.now() - lockStats.mtimeMs > LOCAL_RATE_LIMIT_STALE_LOCK_MS) {
+      fs.rmSync(LOCAL_RATE_LIMIT_LOCK_DIR, { recursive: true, force: true });
+    }
+  } catch {
+    // Lock does not exist or cannot be read; continue normal acquisition loop.
+  }
+};
+
+const acquireLocalRateLimitLock = async (): Promise<void> => {
+  ensureLocalRateLimitDir();
+  while (true) {
+    try {
+      fs.mkdirSync(LOCAL_RATE_LIMIT_LOCK_DIR);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EEXIST") {
+        throw error;
+      }
+      tryBreakStaleLock();
+      await sleep(25);
+    }
+  }
+};
+
+const releaseLocalRateLimitLock = (): void => {
+  fs.rmSync(LOCAL_RATE_LIMIT_LOCK_DIR, { recursive: true, force: true });
+};
+
+const readSharedNextAllowedAt = (): number => {
+  try {
+    const raw = fs.readFileSync(LOCAL_RATE_LIMIT_STATE_FILE, "utf8");
+    const parsed = JSON.parse(raw) as { nextAllowedAtMs?: number };
+    return Number(parsed.nextAllowedAtMs ?? 0);
+  } catch {
+    return 0;
+  }
+};
+
+const writeSharedNextAllowedAt = (nextAllowedAtMs: number): void => {
+  fs.writeFileSync(
+    LOCAL_RATE_LIMIT_STATE_FILE,
+    `${JSON.stringify({ nextAllowedAtMs, updatedAt: now(), pid: process.pid })}\n`,
+    "utf8"
+  );
+};
+
+const acquireGlobalSemanticScholarSlot = async (): Promise<void> => {
+  while (true) {
+    await acquireLocalRateLimitLock();
+    let waitMs = 0;
+    try {
+      const nowMs = Date.now();
+      const sharedNextAllowedAt = readSharedNextAllowedAt();
+      const nextAllowedAt = Math.max(processNextSemanticScholarAllowedAt, sharedNextAllowedAt);
+      if (nextAllowedAt > nowMs) {
+        waitMs = nextAllowedAt - nowMs;
+      } else {
+        const next = nowMs + SEMANTIC_SCHOLAR_MIN_INTERVAL_MS;
+        processNextSemanticScholarAllowedAt = next;
+        writeSharedNextAllowedAt(next);
+        return;
+      }
+    } finally {
+      releaseLocalRateLimitLock();
+    }
+    await sleep(waitMs);
+  }
+};
+
+const withSemanticScholarRateLimit = async <T>(fn: () => Promise<T>): Promise<T> => {
+  await acquireGlobalSemanticScholarSlot();
+  return fn();
+};
+
+const normalizeQueryTerms = (terms: string[]): string[] =>
+  terms
+    .map((term) => term.trim())
     .filter(Boolean);
 
 const withRetries = async <T>(
@@ -93,6 +187,15 @@ const withRetries = async <T>(
     }
   }
   throw new Error(`Unreachable retry state for ${label}`);
+};
+
+const isOpenAlexQuotaOrRateExhaustionError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("(402)") ||
+    message.includes("(429)") ||
+    /quota|credit|rate limit|too many requests/i.test(message)
+  );
 };
 
 const parseArgs = (): CliOptions => {
@@ -249,47 +352,58 @@ const executeLiveFlow = async (input: {
 }): Promise<void> => {
   const { thesis, providers, runDir } = input;
   const stepData: Record<string, unknown> = {};
-  let nextSemanticScholarAllowedAt = 0;
 
-  const withSemanticScholarRateLimit = async <T>(fn: () => Promise<T>): Promise<T> => {
-    const nowMs = Date.now();
-    if (nextSemanticScholarAllowedAt > nowMs) {
-      await sleep(nextSemanticScholarAllowedAt - nowMs);
-    }
-    nextSemanticScholarAllowedAt = Date.now() + 1000;
-    return fn();
-  };
-
-  const queryPlan = await withRetries("llm_query_plan", () =>
-    providers.reasoning.generateQueryPlan(thesis.text)
+  const thesisSummary = await withRetries("llm_thesis_summary", () =>
+    providers.reasoning.summarizeThesis(thesis.text)
   );
-  stepData.queryPlan = queryPlan;
+  stepData.thesisSummary = thesisSummary;
 
-  let activeQueryKeywords = splitQueryKeywords(queryPlan.query);
-  let activeQuery = activeQueryKeywords.join(" ");
-  let activeQuerySource: SeedSelectionQueryHistoryEntry["source"] = "query_plan";
+  const queryGeneration = await withRetries("llm_query_generation", () =>
+    providers.reasoning.generateQuery({
+      thesisTitle: thesisSummary.thesis_title,
+      thesisSummary: thesisSummary.thesis_summary
+    })
+  );
+  stepData.queryGeneration = queryGeneration;
+
+  let activeQueryTerms = normalizeQueryTerms(queryGeneration.terms);
+  let activeQuery = activeQueryTerms.join(" ");
+  let activeQuerySource: SeedSelectionQueryHistoryEntry["source"] = "query_generation";
   let seedSelection: Awaited<ReturnType<typeof providers.reasoning.selectSeeds>> | null = null;
   let selectedSeedCandidates: CandidatePaper[] = [];
   const queryHistory: SeedSelectionQueryHistoryEntry[] = [];
   const selectionHistory: SeedSelectionAttemptHistory[] = [];
   let mergedCandidates: CandidatePaper[] = [];
   let initialCandidates: CandidatePaper[] = [];
-  const maxSelectionAttempts = Math.max(1, activeQueryKeywords.length - MIN_QUERY_KEYWORDS + 1);
+  const maxSelectionAttempts = Math.max(1, activeQueryTerms.length - MIN_QUERY_TERMS + 1);
 
   for (let attempt = 1; attempt <= maxSelectionAttempts; attempt += 1) {
-    activeQuery = activeQueryKeywords.join(" ");
-    const searchResults = await withRetries(`semantic_search_attempt_${attempt}`, () =>
-      withSemanticScholarRateLimit(() =>
-        providers.semanticScholar.search(activeQuery, queryPlan.fields_of_study, SELECTION_WINDOW)
-      )
-    );
+    activeQuery = activeQueryTerms.join(" ");
+    let searchResults: CandidatePaper[];
+    let searchProvider: "openalex.search" | "semantic_scholar.search" = "openalex.search";
+    try {
+      searchResults = await withRetries(`openalex_search_attempt_${attempt}`, () =>
+        providers.openAlex.search(activeQuery, queryGeneration.fields_of_study, SELECTION_WINDOW)
+      );
+    } catch (error) {
+      if (!isOpenAlexQuotaOrRateExhaustionError(error)) {
+        throw error;
+      }
+      console.warn(`[fallback] openalex search exhausted at attempt ${attempt}; switching to semantic scholar`);
+      searchProvider = "semantic_scholar.search";
+      searchResults = await withRetries(`semantic_search_fallback_attempt_${attempt}`, () =>
+        withSemanticScholarRateLimit(() =>
+          providers.semanticScholar.search(activeQuery, queryGeneration.fields_of_study, SELECTION_WINDOW)
+        )
+      );
+    }
     const rankedCandidates = dedupeBy(searchResults, (paper) => paper.paperId).slice(
       0,
       SELECTION_WINDOW
     );
     const searchSnapshot = {
       query: activeQuery,
-      fields_of_study: queryPlan.fields_of_study,
+      fields_of_study: queryGeneration.fields_of_study,
       total_hits: searchResults.length
     };
     const queryHistoryEntry: SeedSelectionQueryHistoryEntry = {
@@ -299,6 +413,7 @@ const executeLiveFlow = async (input: {
     };
     queryHistory.push(queryHistoryEntry);
     stepData[`searchAttempt${attempt}`] = {
+      provider: searchProvider,
       query: activeQuery,
       totalResults: searchResults.length,
       selectionCandidates: rankedCandidates.length
@@ -310,9 +425,9 @@ const executeLiveFlow = async (input: {
     mergedCandidates = rankedCandidates;
 
     if (searchResults.length === 0) {
-      const nextQueryKeywords =
-        activeQueryKeywords.length > MIN_QUERY_KEYWORDS
-          ? activeQueryKeywords.slice(1)
+      const nextQueryTerms =
+        activeQueryTerms.length > MIN_QUERY_TERMS
+          ? activeQueryTerms.slice(1)
           : null;
       seedSelection = seedSelectionSchema.parse({ outcome: "empty" });
       selectionHistory.push({
@@ -321,14 +436,14 @@ const executeLiveFlow = async (input: {
         decision: {
           outcome: "empty",
           selected_candidate_indices: [],
-          revised_query: nextQueryKeywords ? nextQueryKeywords.join(" ") : null
+          revised_query: nextQueryTerms ? nextQueryTerms.join(" ") : null
         }
       });
-      if (!nextQueryKeywords) {
+      if (!nextQueryTerms) {
         break;
       }
-      activeQueryKeywords = nextQueryKeywords;
-      activeQuerySource = "shorten_specific";
+      activeQueryTerms = nextQueryTerms;
+      activeQuerySource = "drop_first";
       continue;
     }
 
@@ -338,8 +453,8 @@ const executeLiveFlow = async (input: {
     );
     const attemptSelection = await withRetries(`llm_select_seeds_attempt_${attempt}`, () =>
       providers.reasoning.selectSeeds({
-        thesisTitle: queryPlan.thesis_title,
-        thesisSummary: queryPlan.thesis_summary,
+        thesisTitle: thesisSummary.thesis_title,
+        thesisSummary: thesisSummary.thesis_summary,
         candidates: rankedCandidates
       })
     );
@@ -370,9 +485,9 @@ const executeLiveFlow = async (input: {
         break;
       }
     } else {
-      const nextQueryKeywords =
-        activeQueryKeywords.length > MIN_QUERY_KEYWORDS
-          ? activeQueryKeywords.slice(0, activeQueryKeywords.length - 1)
+      const nextQueryTerms =
+        activeQueryTerms.length > MIN_QUERY_TERMS
+          ? activeQueryTerms.slice(0, activeQueryTerms.length - 1)
           : null;
       selectionHistory.push({
         attempt,
@@ -380,14 +495,14 @@ const executeLiveFlow = async (input: {
         decision: {
           outcome: "empty",
           selected_candidate_indices: [],
-          revised_query: nextQueryKeywords ? nextQueryKeywords.join(" ") : null
+          revised_query: nextQueryTerms ? nextQueryTerms.join(" ") : null
         }
       });
-      if (!nextQueryKeywords) {
+      if (!nextQueryTerms) {
         break;
       }
-      activeQueryKeywords = nextQueryKeywords;
-      activeQuerySource = "shorten_broad";
+      activeQueryTerms = nextQueryTerms;
+      activeQuerySource = "drop_last";
     }
   }
 
@@ -516,7 +631,8 @@ const executeLiveFlow = async (input: {
       enrichmentCompleted: enrichment.filter((entry) => entry.status === "completed").length,
       enrichmentFailed: enrichment.filter((entry) => entry.status === "failed").length
     },
-    queryPlan,
+    thesisSummary,
+    queryGeneration,
     finalQuery: activeQuery,
     selectedSeedPaperIds: seedsToResolve.map((seed) => seed.paperId),
     topPapers: scored.slice(0, 15).map((paper) => ({
@@ -541,17 +657,18 @@ const executeLiveFlow = async (input: {
 const run = async (): Promise<void> => {
   const options = parseArgs();
   const fixtures = theses as ThesisFixture[];
+  const defaultThesisId = fixtures[0]?.id;
 
   const selected = options.runAll
     ? fixtures
-    : fixtures.filter((thesis) => (options.thesisId ? thesis.id === options.thesisId : thesis.id === "business-ai-pricing"));
+    : fixtures.filter((thesis) =>
+        options.thesisId ? thesis.id === options.thesisId : thesis.id === defaultThesisId
+      );
 
   if (selected.length === 0) {
     throw new Error("No thesis fixture selected. Use --list to see available IDs.");
   }
 
-  const rootDir = path.dirname(fileURLToPath(import.meta.url));
-  const projectRoot = path.resolve(rootDir, "..");
   const envFile = path.join(projectRoot, ".env");
   const env = loadEnvFile(envFile);
 
@@ -561,8 +678,13 @@ const run = async (): Promise<void> => {
   const googleClientId = optionalEnv(env, "GOOGLE_CLIENT_ID");
   const googleClientSecret = optionalEnv(env, "GOOGLE_CLIENT_SECRET");
   const unpaywallEmail = optionalEnv(env, "UNPAYWALL_EMAIL");
-  const openAiPromptIdQueryPlan = requireEnv(env, "OPENAI_PROMPT_ID_QUERY_PLAN");
-  const openAiPromptVersionQueryPlan = optionalEnv(env, "OPENAI_PROMPT_VERSION_QUERY_PLAN");
+  const openAiPromptIdThesisSummary = requireEnv(env, "OPENAI_PROMPT_ID_THESIS_SUMMARY");
+  const openAiPromptVersionThesisSummary = optionalEnv(env, "OPENAI_PROMPT_VERSION_THESIS_SUMMARY");
+  const openAiPromptIdQueryGeneration = requireEnv(env, "OPENAI_PROMPT_ID_QUERY_GENERATION");
+  const openAiPromptVersionQueryGeneration = optionalEnv(
+    env,
+    "OPENAI_PROMPT_VERSION_QUERY_GENERATION"
+  );
   const openAiPromptIdSeedSelection = requireEnv(env, "OPENAI_PROMPT_ID_SEED_SELECTION");
   const openAiPromptVersionSeedSelection = optionalEnv(
     env,
@@ -571,8 +693,10 @@ const run = async (): Promise<void> => {
 
   const providerEnv = {
     OPENAI_API_KEY: openAiApiKey,
-    OPENAI_PROMPT_ID_QUERY_PLAN: openAiPromptIdQueryPlan,
-    OPENAI_PROMPT_VERSION_QUERY_PLAN: openAiPromptVersionQueryPlan,
+    OPENAI_PROMPT_ID_THESIS_SUMMARY: openAiPromptIdThesisSummary,
+    OPENAI_PROMPT_VERSION_THESIS_SUMMARY: openAiPromptVersionThesisSummary,
+    OPENAI_PROMPT_ID_QUERY_GENERATION: openAiPromptIdQueryGeneration,
+    OPENAI_PROMPT_VERSION_QUERY_GENERATION: openAiPromptVersionQueryGeneration,
     OPENAI_PROMPT_ID_SEED_SELECTION: openAiPromptIdSeedSelection,
     OPENAI_PROMPT_VERSION_SEED_SELECTION: openAiPromptVersionSeedSelection,
     SEMANTIC_SCHOLAR_API_KEY: semanticScholarApiKey,
@@ -589,7 +713,7 @@ const run = async (): Promise<void> => {
   fs.mkdirSync(sessionDir, { recursive: true });
   console.log(`Session log dir: ${sessionDir}`);
   console.log(
-    `Prompt IDs: query_plan=${openAiPromptIdQueryPlan}, seed_selection=${openAiPromptIdSeedSelection}`
+    `Prompt IDs: thesis_summary=${openAiPromptIdThesisSummary}, query_generation=${openAiPromptIdQueryGeneration}, seed_selection=${openAiPromptIdSeedSelection}`
   );
   console.log(`Selected fixtures: ${selected.map((item) => item.id).join(", ")}`);
 

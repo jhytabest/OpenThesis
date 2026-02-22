@@ -1,32 +1,32 @@
 [
   {
-    "id": "business-ai-pricing",
-    "domain": "business",
-    "title": "AI Pricing and Retention in B2B SaaS",
-    "text": "This thesis studies how AI-native product features affect willingness to pay, conversion, and retention in B2B SaaS. It compares value-based pricing, usage-based pricing, and seat-based models under uncertainty in model inference cost. The work analyzes expansion revenue, churn risk, and enterprise procurement constraints, then proposes a pricing framework that aligns model quality, cost-to-serve, and long-term customer lifetime value."
+    "id": "deeptech-team-composition",
+    "domain": "entrepreneurship",
+    "title": "From Scientist-Founders to Market-Builders: Team Composition in Deep Tech Startups",
+    "text": "This thesis examines how the balance between scientific expertise and commercial capabilities in founding teams affects the growth trajectories of deep tech startups. It investigates role complementarity, hiring timing, and leadership transitions from research phase to market expansion. The analysis focuses on how team design influences fundraising capacity, go-to-market execution, and long-term venture survival."
   },
   {
-    "id": "finance-esg-risk",
-    "domain": "finance",
-    "title": "ESG Signals and Credit Risk Transmission",
-    "text": "This thesis investigates whether ESG controversies and sustainability disclosures transmit into corporate credit spreads and default probability forecasts. It combines textual disclosure features with market and balance sheet variables to evaluate incremental predictive power for risk models. The study emphasizes causal identification, model stability across market regimes, and implications for portfolio construction and risk governance."
+    "id": "deeptech-ecosystem-support",
+    "domain": "innovation",
+    "title": "Innovation Ecosystems and Deep Tech Scale-Up Outcomes",
+    "text": "This thesis studies how ecosystem factors such as incubators, university networks, corporate partnerships, and public funding programs shape deep tech venture performance. It evaluates whether ecosystem embeddedness improves access to talent, pilot customers, and strategic resources during commercialization. The work compares ecosystem configurations to identify which combinations are most associated with successful scale-up."
   },
   {
-    "id": "healthcare-clinical-nlp",
-    "domain": "healthcare",
-    "title": "Clinical NLP for Early Sepsis Detection",
-    "text": "This thesis develops an evidence-grounded approach for early sepsis detection by combining structured vitals with free-text clinical notes. It evaluates transformer-based NLP against rule-based baselines and assesses calibration, fairness, and alarm fatigue in intensive care settings. The methodology prioritizes explainability and traceable evidence links between clinical findings, predictions, and intervention recommendations."
+    "id": "ai-regulation-venture-trajectory",
+    "domain": "policy",
+    "title": "Regulation as Enabler or Constraint: AI Policy and Deep Tech Venture Trajectories",
+    "text": "This thesis explores how regulatory environments influence product development, market entry speed, and financing in AI-driven deep tech startups. It compares regulatory burden, compliance pathways, and policy support instruments across different sectors and jurisdictions. The goal is to identify when regulation reduces uncertainty and trust versus when it slows experimentation and growth."
   },
   {
-    "id": "energy-grid-forecasting",
-    "domain": "energy",
-    "title": "Probabilistic Forecasting for Renewable Grid Stability",
-    "text": "This thesis explores probabilistic forecasting methods for short-term renewable generation and demand balancing in electricity grids with high wind and solar penetration. It compares temporal deep learning and Bayesian methods for uncertainty estimation, and studies downstream effects on reserve scheduling, grid stability, and market bidding. The contribution focuses on reliability-aware decision support under volatile weather conditions."
+    "id": "deeptech-monetization-pathways",
+    "domain": "business-model",
+    "title": "Monetization Pathways in Deep Tech: Product, Platform, and Licensing Strategies",
+    "text": "This thesis analyzes how deep tech startups choose and evolve monetization strategies under long R&D cycles and high technological uncertainty. It compares product-based models, technology licensing, and platform approaches, with attention to capital requirements and time-to-revenue. The research identifies which monetization pathways best align with specific technology maturity levels and market structures."
   },
   {
-    "id": "education-adaptive-learning",
-    "domain": "education",
-    "title": "Adaptive Learning Systems and Student Outcomes",
-    "text": "This thesis examines adaptive learning systems that personalize content sequencing based on student behavior and formative assessment signals. It analyzes treatment effects on completion, performance, and engagement across diverse cohorts while addressing selection bias and intervention heterogeneity. The work also evaluates pedagogical tradeoffs between personalization, curriculum coherence, and instructor oversight."
+    "id": "french-deeptech-success-framework",
+    "domain": "deeptech",
+    "title": "A Success Assessment Framework for French Deep Tech Startups",
+    "text": "This thesis develops an empirical framework to assess the likelihood of success for French deep tech ventures using startup-level data and qualitative case evidence. It integrates team attributes, ecosystem participation, financing patterns, and regulatory exposure into a multidimensional evaluation model. The framework is designed to support decision-making for entrepreneurs, investors, and policymakers."
   }
 ]

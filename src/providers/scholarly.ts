@@ -1,4 +1,5 @@
 import { semanticScholarFieldsOfStudy } from "../lib/zod-schemas.js";
+import { Db } from "../lib/db.js";
 import type {
   CandidatePaper,
   CanonicalPaper,
@@ -33,10 +34,12 @@ type OpenAlexWork = {
   doi?: string;
   abstract_inverted_index?: Record<string, number[]>;
   concepts?: Array<{ display_name?: string; score?: number }>;
-  primary_topic?: { field?: { display_name?: string } };
+  primary_topic?: { field?: { id?: string; display_name?: string } };
   authorships?: Array<{ author?: { id?: string; display_name?: string; orcid?: string } }>;
   referenced_works?: string[];
 };
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 const normalizeDoi = (value: string): string => value.replace(/^https?:\/\/doi.org\//i, "");
 
@@ -113,6 +116,39 @@ const buildSearchQuery = (query: string): string => {
   }
   return deduped.join(" ");
 };
+
+const isOpenAlexWorkId = (value: string | undefined): boolean => {
+  if (!value) {
+    return false;
+  }
+  return /^https?:\/\/openalex\.org\/W\d+$/i.test(value) || /^W\d+$/i.test(value);
+};
+
+const mapOpenAlexSearchResponse = (payload: {
+  results?: OpenAlexWork[];
+}): CandidatePaper[] =>
+  (payload.results ?? [])
+    .filter((work): work is Required<Pick<OpenAlexWork, "id">> & OpenAlexWork => Boolean(work.id))
+    .map((work) => ({
+      paperId: work.id!,
+      title: work.title ?? work.display_name ?? "Untitled",
+      abstract: parseOpenAlexAbstract(work.abstract_inverted_index),
+      year: work.publication_year,
+      citationCount: work.cited_by_count,
+      doi: work.doi ? normalizeDoi(work.doi) : undefined,
+      fieldsOfStudy: [
+        ...(work.primary_topic?.field?.display_name ? [work.primary_topic.field.display_name] : []),
+        ...((work.concepts ?? [])
+          .filter((concept) => (concept.score ?? 0) >= 0.5)
+          .map((concept) => concept.display_name)
+          .filter((value): value is string => Boolean(value)))
+      ],
+      authors: (work.authorships ?? []).map((authorship) => ({
+        id: authorship.author?.id,
+        name: authorship.author?.display_name ?? "Unknown"
+      }))
+    }))
+    .filter((paper) => (paper.citationCount ?? 0) > 10);
 
 const mapSemanticScholarResponse = (payload: {
   data?: SemanticScholarPaper[];
@@ -249,10 +285,51 @@ export const buildLiveOpenAlexProvider = (
   const baseUrl = "https://api.openalex.org";
   const MAX_REFERENCES_PER_SEED = 100;
   const MAX_CITING_PER_SEED = 100;
+  const OPENALEX_RATE_LIMIT_KEY = "openalex_api";
+  const OPENALEX_MIN_INTERVAL_MS = 10;
+  let processNextOpenAlexAllowedAt = 0;
 
   const withAuth = (url: URL): URL => {
     url.searchParams.set("api_key", env.OPENALEX_API_KEY!);
     return url;
+  };
+
+  const acquireOpenAlexSlot = async (): Promise<void> => {
+    if (env.ALEXCLAW_DB) {
+      await Db.ensureGlobalRateLimitKey(env.ALEXCLAW_DB, OPENALEX_RATE_LIMIT_KEY);
+      while (true) {
+        const now = Date.now();
+        const nextAllowedAt = await Db.readGlobalRateLimitNextAllowedMs(
+          env.ALEXCLAW_DB,
+          OPENALEX_RATE_LIMIT_KEY
+        );
+        if (nextAllowedAt > now) {
+          await sleep(nextAllowedAt - now);
+          continue;
+        }
+
+        const claimed = await Db.compareAndSetGlobalRateLimit(
+          env.ALEXCLAW_DB,
+          OPENALEX_RATE_LIMIT_KEY,
+          nextAllowedAt,
+          now + OPENALEX_MIN_INTERVAL_MS
+        );
+        if (claimed) {
+          return;
+        }
+      }
+    }
+
+    const now = Date.now();
+    if (processNextOpenAlexAllowedAt > now) {
+      await sleep(processNextOpenAlexAllowedAt - now);
+    }
+    processNextOpenAlexAllowedAt = Date.now() + OPENALEX_MIN_INTERVAL_MS;
+  };
+
+  const fetchOpenAlexJson = async <T>(url: string): Promise<T> => {
+    await acquireOpenAlexSlot();
+    return fetchJson<T>(url, { method: "GET" });
   };
 
   const fetchWorksPage = async (
@@ -266,10 +343,10 @@ export const buildLiveOpenAlexProvider = (
     if (cursor) {
       url.searchParams.set("cursor", cursor);
     }
-    const payload = await fetchJson<{ results?: OpenAlexWork[]; meta?: { next_cursor?: string | null } }>(
-      url.toString(),
-      { method: "GET" }
-    );
+    const payload = await fetchOpenAlexJson<{
+      results?: OpenAlexWork[];
+      meta?: { next_cursor?: string | null };
+    }>(url.toString());
     return {
       results: payload.results ?? [],
       nextCursor: payload.meta?.next_cursor ?? null
@@ -302,20 +379,41 @@ export const buildLiveOpenAlexProvider = (
       )
     );
     try {
-      return await fetchJson(url.toString(), { method: "GET" });
+      return await fetchOpenAlexJson<OpenAlexWork>(url.toString());
     } catch {
       return null;
     }
   };
 
   return {
+    async search(query: string, fieldsOfStudy: string[], limit: number): Promise<CandidatePaper[]> {
+      const searchQuery = buildSearchQuery(query);
+      if (!searchQuery) {
+        throw new Error("OpenAlex query is empty after sanitization");
+      }
+      void fieldsOfStudy;
+
+      const url = withAuth(new URL(`${baseUrl}/works`));
+      url.searchParams.set("search.semantic", searchQuery);
+      url.searchParams.set("per-page", String(Math.max(1, Math.min(50, limit))));
+      const payload = await fetchOpenAlexJson<{ results?: OpenAlexWork[] }>(url.toString());
+      return mapOpenAlexSearchResponse(payload).slice(0, limit);
+    },
+
     async resolveSeeds(seeds: CandidatePaper[]): Promise<CanonicalPaper[]> {
       const resolved: CanonicalPaper[] = [];
 
       for (const seed of seeds) {
         let work: OpenAlexWork | undefined;
 
-        if (seed.doi) {
+        if (isOpenAlexWorkId(seed.paperId)) {
+          const byId = await fetchWorkById(seed.paperId);
+          if (byId) {
+            work = byId;
+          }
+        }
+
+        if (!work && seed.doi) {
           const byDoi = await fetchWorks(`doi:${normalizeDoi(seed.doi)}`, 1);
           work = byDoi[0];
         }
@@ -324,14 +422,14 @@ export const buildLiveOpenAlexProvider = (
           const url = withAuth(new URL(`${baseUrl}/works`));
           url.searchParams.set("search", seed.title);
           url.searchParams.set("per-page", "10");
-          const searchPayload = await fetchJson<{ results?: OpenAlexWork[] }>(url.toString(), {
-            method: "GET"
-          });
+          const searchPayload = await fetchOpenAlexJson<{ results?: OpenAlexWork[] }>(
+            url.toString()
+          );
           work = pickBestTitleMatch(seed, searchPayload.results ?? []);
         }
 
         if (work?.id) {
-          resolved.push(mapOpenAlexWork(work, seed.paperId));
+          resolved.push(mapOpenAlexWork(work, isOpenAlexWorkId(seed.paperId) ? undefined : seed.paperId));
         }
       }
 

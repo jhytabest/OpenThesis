@@ -5,6 +5,7 @@ node_modules
 coverage
 dist
 debug-runs
+.tmp
 *.db
 *.db-shm
 *.db-wal

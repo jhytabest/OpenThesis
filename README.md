@@ -14,14 +14,15 @@ Production-oriented MVP for thesis-to-paper-graph using:
 - Thesis intake and asynchronous run creation
 - Pipeline with:
   - OpenAI Responses API strict-JSON steps
-  - Semantic Scholar search
+  - OpenAlex search (Semantic Scholar fallback on OpenAlex quota/rate exhaustion)
   - OpenAlex canonicalization + one-generation graph expansion
   - Relevance scoring + tiering
   - Asynchronous Unpaywall PDF enrichment via queue
 - Traceable run evidence and step audit trail
 - Minimal UI to inspect papers/authors
-- Global Semantic Scholar throttle at 1 request/second (D1-backed lease)
-- Semantic Scholar query generation aligned with Graph API rules (plain text, no boolean syntax, no hyphenated terms)
+- OpenAlex global API ceiling is 100 requests/second across calls
+- Global Semantic Scholar fallback throttle at 1 request/second (D1-backed lease)
+- Seed query generation uses plain-text terms (no boolean syntax)
 
 ## Project Layout
 
@@ -29,7 +30,7 @@ Production-oriented MVP for thesis-to-paper-graph using:
 - `src/lib/db.ts`: D1 repository and ownership-safe queries
 - `src/lib/pipeline.ts`: end-to-end run pipeline
 - `src/lib/prompts.ts`: centralized LLM prompts/templates
-- `src/providers/scholarly.ts`: centralized Semantic Scholar + OpenAlex call assembly
+- `src/providers/scholarly.ts`: centralized OpenAlex + Semantic Scholar call assembly
 - `src/providers/live.ts`: live provider adapters (OpenAI + Unpaywall, plus scholarly provider wiring)
 - `src/ui/index.ts`: app UI HTML
 - `migrations/0001_init.sql`: D1 schema
@@ -81,10 +82,10 @@ Run the real external workflow locally (no mock provider) with thesis fixtures:
 
 ```bash
 cp .env.example .env
-# fill OPENAI_API_KEY, SEMANTIC_SCHOLAR_API_KEY, OPENALEX_API_KEY (and optionally UNPAYWALL_EMAIL)
-# required: set OPENAI_PROMPT_ID_QUERY_PLAN / OPENAI_PROMPT_ID_SEED_SELECTION
+# fill OPENAI_API_KEY, OPENALEX_API_KEY, and SEMANTIC_SCHOLAR_API_KEY for fallback (plus optionally UNPAYWALL_EMAIL)
+# required: set OPENAI_PROMPT_ID_THESIS_SUMMARY / OPENAI_PROMPT_ID_QUERY_GENERATION / OPENAI_PROMPT_ID_SEED_SELECTION
 npm run debug:live -- --list
-npm run debug:live -- --thesis-id business-ai-pricing
+npm run debug:live -- --thesis-id deeptech-team-composition
 npm run debug:live:all
 ```
 
@@ -113,8 +114,10 @@ wrangler secret put UNPAYWALL_EMAIL
 
 Prompt configs (non-secret, set as vars) to use saved OpenAI prompts with direct `input` text:
 
-- `OPENAI_PROMPT_ID_QUERY_PLAN`
-- `OPENAI_PROMPT_VERSION_QUERY_PLAN` (optional; omit to use current published version)
+- `OPENAI_PROMPT_ID_THESIS_SUMMARY`
+- `OPENAI_PROMPT_VERSION_THESIS_SUMMARY` (optional; omit to use current published version)
+- `OPENAI_PROMPT_ID_QUERY_GENERATION`
+- `OPENAI_PROMPT_VERSION_QUERY_GENERATION` (optional; omit to use current published version)
 - `OPENAI_PROMPT_ID_SEED_SELECTION`
 - `OPENAI_PROMPT_VERSION_SEED_SELECTION` (optional; omit to use current published version)
 

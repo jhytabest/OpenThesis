@@ -1,6 +1,7 @@
 import { zodToJsonSchema } from "zod-to-json-schema";
 import {
-  queryPlanSchema,
+  thesisSummarySchema,
+  queryGenerationSchema,
   seedSelectionLlmSchema,
   seedSelectionSchema
 } from "../lib/zod-schemas.js";
@@ -9,7 +10,8 @@ import type {
   CandidatePaper,
   Env,
   Providers,
-  QueryPlan,
+  ThesisSummary,
+  QueryGeneration,
   SelectSeedsInput,
   SeedSelection
 } from "../lib/types.js";
@@ -150,10 +152,15 @@ const buildLiveReasoningProvider = (env: Env) => {
     throw new Error("OPENAI_API_KEY is required in live mode");
   }
 
-  const queryPlanPrompt = resolvePromptConfig(
-    env.OPENAI_PROMPT_ID_QUERY_PLAN,
-    env.OPENAI_PROMPT_VERSION_QUERY_PLAN,
-    "OPENAI_PROMPT_ID_QUERY_PLAN"
+  const thesisSummaryPrompt = resolvePromptConfig(
+    env.OPENAI_PROMPT_ID_THESIS_SUMMARY,
+    env.OPENAI_PROMPT_VERSION_THESIS_SUMMARY,
+    "OPENAI_PROMPT_ID_THESIS_SUMMARY"
+  );
+  const queryGenerationPrompt = resolvePromptConfig(
+    env.OPENAI_PROMPT_ID_QUERY_GENERATION,
+    env.OPENAI_PROMPT_VERSION_QUERY_GENERATION,
+    "OPENAI_PROMPT_ID_QUERY_GENERATION"
   );
   const seedSelectionPrompt = resolvePromptConfig(
     env.OPENAI_PROMPT_ID_SEED_SELECTION,
@@ -205,20 +212,36 @@ const buildLiveReasoningProvider = (env: Env) => {
   };
 
   return {
-    async generateQueryPlan(thesisText: string): Promise<QueryPlan> {
+    async summarizeThesis(thesisText: string): Promise<ThesisSummary> {
       return runStructuredPrompt({
-        name: "thesis_query",
-        schema: openAiStrictSchema(queryPlanSchema, "thesis_query"),
-        user: LlmPrompts.queryPlanUser(thesisText),
-        prompt: queryPlanPrompt,
-        parse: (value) => queryPlanSchema.parse(value)
+        name: "summary",
+        schema: openAiStrictSchema(thesisSummarySchema, "summary"),
+        user: LlmPrompts.thesisSummaryUser(thesisText),
+        prompt: thesisSummaryPrompt,
+        parse: (value) => thesisSummarySchema.parse(value)
+      });
+    },
+
+    async generateQuery(input: {
+      thesisTitle: string;
+      thesisSummary: string;
+    }): Promise<QueryGeneration> {
+      return runStructuredPrompt({
+        name: "query",
+        schema: openAiStrictSchema(queryGenerationSchema, "query"),
+        user: LlmPrompts.queryGenerationUser({
+          thesisTitle: input.thesisTitle,
+          thesisSummary: input.thesisSummary
+        }),
+        prompt: queryGenerationPrompt,
+        parse: (value) => queryGenerationSchema.parse(value)
       });
     },
 
     async selectSeeds(input: SelectSeedsInput): Promise<SeedSelection> {
       return runStructuredPrompt({
-        name: "candidate_decision",
-        schema: openAiStrictSchema(seedSelectionLlmSchema, "candidate_decision"),
+        name: "selection",
+        schema: openAiStrictSchema(seedSelectionLlmSchema, "selection"),
         user: LlmPrompts.seedSelectionUser({
           thesisTitle: input.thesisTitle,
           thesisSummary: input.thesisSummary,

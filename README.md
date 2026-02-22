@@ -149,19 +149,35 @@ Auth:
 
 Core:
 
-- `GET /api/theses`
-- `GET /api/theses/:thesisId`
-- `POST /api/theses`
-- `POST /api/theses/:thesisId/runs`
-- `GET /api/runs`
-- `GET /api/runs/:runId`
-- `GET /api/runs/:runId/papers`
-- `GET /api/runs/:runId/authors`
-- `GET /api/runs/:runId/evidence`
+- `GET /api/projects`
+- `GET /api/projects/:projectId`
+- `POST /api/projects`
+- `PATCH /api/projects/:projectId`
+- `DELETE /api/projects/:projectId`
+- `POST /api/projects/:projectId/runs`
+- `GET /api/projects/:projectId/dashboard`
+- `GET /api/projects/:projectId/memory-docs`
+- `PATCH /api/projects/:projectId/memory-docs/:docKey`
 
-`GET /api/runs/:runId/papers` returns nested `authors` and `citations` arrays for each paper.
+Chats:
 
-Run responses include `enrichment` counters (`enqueued`, `completed`, `found`, `notFound`, `failed`, `pending`) so queued Unpaywall progress is visible even after the main graph run reaches `COMPLETED`.
+- `GET /api/projects/:projectId/chats`
+- `POST /api/projects/:projectId/chats`
+- `PATCH /api/projects/:projectId/chats/:chatId`
+- `DELETE /api/projects/:projectId/chats/:chatId`
+- `GET /api/projects/:projectId/chats/:chatId/messages`
+- `POST /api/projects/:projectId/chats/:chatId/messages`
+
+Papers:
+
+- `GET /api/projects/:projectId/papers`
+- `POST /api/projects/:projectId/papers`
+- `PATCH /api/projects/:projectId/papers/:projectPaperId`
+- `DELETE /api/projects/:projectId/papers/:projectPaperId`
+- `GET /api/projects/:projectId/reading-list`
+- `GET /api/projects/:projectId/papers/:projectPaperId/comments`
+- `POST /api/projects/:projectId/papers/:projectPaperId/comments`
+- `DELETE /api/projects/:projectId/papers/:projectPaperId/comments/:commentId`
 
 Ops:
 

@@ -34,17 +34,15 @@ export const chatsRepo = {
     return all(
       db,
       `SELECT
-         c.id,
-         c.title,
-         c.created_at,
-         c.updated_at,
-         COUNT(m.id) AS message_count,
-         MAX(m.created_at) AS last_message_at
-       FROM project_chats c
-       LEFT JOIN chat_messages m ON m.chat_id = c.id
-       WHERE c.project_id = ? AND c.user_id = ?
-       GROUP BY c.id
-       ORDER BY COALESCE(MAX(m.created_at), c.updated_at) DESC`,
+         id,
+         title,
+         created_at,
+         updated_at,
+         message_count,
+         last_message_at
+       FROM project_chats
+       WHERE project_id = ? AND user_id = ?
+       ORDER BY last_message_at DESC, updated_at DESC`,
       projectId,
       userId
     );
@@ -129,8 +127,16 @@ export const chatsRepo = {
     await run(
       db,
       `UPDATE project_chats
-       SET updated_at = ?
+       SET
+         updated_at = ?,
+         message_count = message_count + 1,
+         last_message_at = CASE
+           WHEN last_message_at IS NULL OR last_message_at < ? THEN ?
+           ELSE last_message_at
+         END
        WHERE id = ? AND project_id = ? AND user_id = ?`,
+      createdAt,
+      createdAt,
       createdAt,
       input.chatId,
       input.projectId,
@@ -165,6 +171,34 @@ export const chatsRepo = {
       input.chatId,
       input.projectId,
       input.userId
+    );
+  },
+
+  async listRecentChatMessagesOwned(db: D1Database, input: {
+    chatId: string;
+    projectId: string;
+    userId: string;
+    limit: number;
+  }): Promise<Array<{
+    id: string;
+    role: "user" | "assistant" | "system";
+    content: string;
+    metadata_json: string | null;
+    created_at: string;
+  }>> {
+    const limit = Math.max(1, Math.min(200, input.limit));
+    return all(
+      db,
+      `SELECT m.id, m.role, m.content, m.metadata_json, m.created_at
+       FROM chat_messages m
+       INNER JOIN project_chats c ON c.id = m.chat_id
+       WHERE m.chat_id = ? AND m.project_id = ? AND c.user_id = ?
+       ORDER BY m.created_at DESC
+       LIMIT ?`,
+      input.chatId,
+      input.projectId,
+      input.userId,
+      limit
     );
   }
 };

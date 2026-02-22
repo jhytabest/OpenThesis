@@ -19,6 +19,15 @@ type QueueBatch = {
   messages: Array<{ body: unknown; attempts: number; ack(): void; retry(): void }>;
 };
 
+const isWorkflowAlreadyExistsError = (error: unknown): boolean => {
+  const code = Number((error as { code?: unknown })?.code ?? NaN);
+  if (code === 409) {
+    return true;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return /already exists|instance.+exists|duplicate/i.test(message.toLowerCase());
+};
+
 export async function handleQueue(batch: QueueBatch, env: Env): Promise<void> {
   if (batch.queue === ENRICH_QUEUE_NAME) {
     for (const message of batch.messages) {
@@ -99,10 +108,18 @@ export async function handleQueue(batch: QueueBatch, env: Env): Promise<void> {
       }
 
       if (env.ALEXCLAW_RUN_WORKFLOW?.create) {
-        await env.ALEXCLAW_RUN_WORKFLOW.create({
-          id: `run-${runId}`,
-          params: { runId }
-        });
+        try {
+          await env.ALEXCLAW_RUN_WORKFLOW.create({
+            id: `run-${runId}`,
+            params: { runId }
+          });
+        } catch (error) {
+          if (isWorkflowAlreadyExistsError(error)) {
+            message.ack();
+            continue;
+          }
+          throw error;
+        }
       } else {
         await processRun(env, runId);
       }

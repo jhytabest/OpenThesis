@@ -391,23 +391,6 @@ export async function processRun(env: Env, runId: string): Promise<void> {
         totalScore: scored.totalScore,
         tier: scored.tier
       });
-      await HubDb.upsertProjectPaperFromPipeline(env.ALEXCLAW_DB, {
-        projectId: run.thesis_id,
-        paperId: paperIdByOpenAlexId.get(paper.openalexId)!,
-        openalexId: paper.openalexId,
-        semanticScholarId: paper.semanticScholarId,
-        doi: paper.doi,
-        title: paper.title,
-        abstract: paper.abstract,
-        year: paper.year,
-        citationCount: paper.citationCount,
-        fieldsOfStudy: paper.fieldsOfStudy,
-        lexicalScore: scored.lexicalScore,
-        graphScore: scored.graphScore,
-        citationScore: scored.citationScore,
-        totalScore: scored.totalScore,
-        tier: scored.tier
-      });
 
       scoredSummary.push({
         openalexId: paper.openalexId,
@@ -455,6 +438,13 @@ export async function processRun(env: Env, runId: string): Promise<void> {
         scored: scoredSummary
       }
     });
+
+    // Promote run-scoped paper results to project-level explorer only after the run succeeds.
+    await HubDb.syncProjectPipelinePapersFromRun(env.ALEXCLAW_DB, {
+      runId,
+      projectId: run.thesis_id
+    });
+
     const topFindings = [...scoredSummary]
       .sort((left, right) => right.totalScore - left.totalScore)
       .slice(0, 10)

@@ -92,51 +92,15 @@ export const runsRepo = {
       lookup_failed_count: number;
     }>(
       db,
-      `WITH latest_enqueue AS (
-         SELECT rs.run_id, rs.payload_json
-         FROM run_steps rs
-         INNER JOIN (
-           SELECT run_id, MAX(attempt) AS max_attempt
-           FROM run_steps
-           WHERE step_name = 'enqueue_unpaywall_enrichment' AND status = 'COMPLETED'
-           GROUP BY run_id
-         ) latest ON latest.run_id = rs.run_id AND latest.max_attempt = rs.attempt
-         WHERE rs.step_name = 'enqueue_unpaywall_enrichment' AND rs.status = 'COMPLETED'
-       ),
-       evidence_counts AS (
-         SELECT
-           e.run_id,
-           SUM(CASE WHEN e.source = 'unpaywall.lookup' THEN 1 ELSE 0 END) AS lookup_completed_count,
-           SUM(
-             CASE
-               WHEN e.source = 'unpaywall.lookup'
-                 AND COALESCE(CAST(json_extract(e.detail_json, '$.found') AS INTEGER), 0) = 1
-               THEN 1
-               ELSE 0
-             END
-           ) AS lookup_found_count,
-           SUM(
-             CASE
-               WHEN e.source = 'unpaywall.lookup'
-                 AND COALESCE(CAST(json_extract(e.detail_json, '$.found') AS INTEGER), 0) = 0
-               THEN 1
-               ELSE 0
-             END
-           ) AS lookup_not_found_count,
-           SUM(CASE WHEN e.source = 'unpaywall.lookup_failed' THEN 1 ELSE 0 END) AS lookup_failed_count
-         FROM evidence e
-         GROUP BY e.run_id
-       )
-       SELECT
+      `SELECT
          r.id AS run_id,
-         COALESCE(CAST(json_extract(latest_enqueue.payload_json, '$.enqueuedCount') AS INTEGER), 0) AS enqueued_count,
-         COALESCE(evidence_counts.lookup_completed_count, 0) AS lookup_completed_count,
-         COALESCE(evidence_counts.lookup_found_count, 0) AS lookup_found_count,
-         COALESCE(evidence_counts.lookup_not_found_count, 0) AS lookup_not_found_count,
-         COALESCE(evidence_counts.lookup_failed_count, 0) AS lookup_failed_count
+         COALESCE(res.enqueued_count, 0) AS enqueued_count,
+         COALESCE(res.lookup_completed_count, 0) AS lookup_completed_count,
+         COALESCE(res.lookup_found_count, 0) AS lookup_found_count,
+         COALESCE(res.lookup_not_found_count, 0) AS lookup_not_found_count,
+         COALESCE(res.lookup_failed_count, 0) AS lookup_failed_count
        FROM runs r
-       LEFT JOIN latest_enqueue ON latest_enqueue.run_id = r.id
-       LEFT JOIN evidence_counts ON evidence_counts.run_id = r.id
+       LEFT JOIN run_enrichment_stats res ON res.run_id = r.id
        WHERE r.user_id = ?`,
       userId
     );
@@ -171,51 +135,15 @@ export const runsRepo = {
       lookup_failed_count: number;
     }>(
       db,
-      `WITH latest_enqueue AS (
-         SELECT rs.run_id, rs.payload_json
-         FROM run_steps rs
-         INNER JOIN (
-           SELECT run_id, MAX(attempt) AS max_attempt
-           FROM run_steps
-           WHERE step_name = 'enqueue_unpaywall_enrichment' AND status = 'COMPLETED'
-           GROUP BY run_id
-         ) latest ON latest.run_id = rs.run_id AND latest.max_attempt = rs.attempt
-         WHERE rs.step_name = 'enqueue_unpaywall_enrichment' AND rs.status = 'COMPLETED'
-       ),
-       evidence_counts AS (
-         SELECT
-           e.run_id,
-           SUM(CASE WHEN e.source = 'unpaywall.lookup' THEN 1 ELSE 0 END) AS lookup_completed_count,
-           SUM(
-             CASE
-               WHEN e.source = 'unpaywall.lookup'
-                 AND COALESCE(CAST(json_extract(e.detail_json, '$.found') AS INTEGER), 0) = 1
-               THEN 1
-               ELSE 0
-             END
-           ) AS lookup_found_count,
-           SUM(
-             CASE
-               WHEN e.source = 'unpaywall.lookup'
-                 AND COALESCE(CAST(json_extract(e.detail_json, '$.found') AS INTEGER), 0) = 0
-               THEN 1
-               ELSE 0
-             END
-           ) AS lookup_not_found_count,
-           SUM(CASE WHEN e.source = 'unpaywall.lookup_failed' THEN 1 ELSE 0 END) AS lookup_failed_count
-         FROM evidence e
-         GROUP BY e.run_id
-       )
-       SELECT
+      `SELECT
          r.id AS run_id,
-         COALESCE(CAST(json_extract(latest_enqueue.payload_json, '$.enqueuedCount') AS INTEGER), 0) AS enqueued_count,
-         COALESCE(evidence_counts.lookup_completed_count, 0) AS lookup_completed_count,
-         COALESCE(evidence_counts.lookup_found_count, 0) AS lookup_found_count,
-         COALESCE(evidence_counts.lookup_not_found_count, 0) AS lookup_not_found_count,
-         COALESCE(evidence_counts.lookup_failed_count, 0) AS lookup_failed_count
+         COALESCE(res.enqueued_count, 0) AS enqueued_count,
+         COALESCE(res.lookup_completed_count, 0) AS lookup_completed_count,
+         COALESCE(res.lookup_found_count, 0) AS lookup_found_count,
+         COALESCE(res.lookup_not_found_count, 0) AS lookup_not_found_count,
+         COALESCE(res.lookup_failed_count, 0) AS lookup_failed_count
        FROM runs r
-       LEFT JOIN latest_enqueue ON latest_enqueue.run_id = r.id
-       LEFT JOIN evidence_counts ON evidence_counts.run_id = r.id
+       LEFT JOIN run_enrichment_stats res ON res.run_id = r.id
        WHERE r.id = ? AND r.user_id = ?`,
       runId,
       userId
@@ -253,6 +181,7 @@ export const runsRepo = {
     await run(db, `DELETE FROM run_papers WHERE run_id = ?`, runId);
     await run(db, `DELETE FROM evidence WHERE run_id = ?`, runId);
     await run(db, `DELETE FROM run_steps WHERE run_id = ?`, runId);
+    await run(db, `DELETE FROM run_enrichment_stats WHERE run_id = ?`, runId);
   },
 
   async createRunStep(db: D1Database, runId: string, stepName: string, attempt: number): Promise<string> {

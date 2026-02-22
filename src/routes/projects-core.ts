@@ -3,10 +3,25 @@ import { Db } from "../lib/db.js";
 import { HubDb } from "../lib/hub-db.js";
 import {
   MAX_THESIS_TEXT_LENGTH,
+  PROJECT_CREATE_MIN_INTERVAL_MS,
   RUN_CREATE_MIN_INTERVAL_MS,
-  THESIS_CREATE_MIN_INTERVAL_MS
 } from "../app/constants.js";
 import { json, type App } from "./shared.js";
+
+const dispatchRun = async (
+  db: D1Database,
+  queue: Queue,
+  runId: string
+): Promise<{ ok: true } | { ok: false; error: string }> => {
+  try {
+    await queue.send({ runId });
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await Db.updateRunStatus(db, runId, "FAILED", `Run dispatch failed: ${message}`);
+    return { ok: false, error: message };
+  }
+};
 
 export function registerProjectCoreRoutes(app: App): void {
   app.get("/api/projects", async (c) => {
@@ -77,7 +92,7 @@ export function registerProjectCoreRoutes(app: App): void {
     const createThrottle = await Db.tryAcquireGlobalRateLimitWindow(
       c.env.ALEXCLAW_DB,
       `project_create:${user.id}`,
-      THESIS_CREATE_MIN_INTERVAL_MS
+      PROJECT_CREATE_MIN_INTERVAL_MS
     );
     if (!createThrottle.allowed) {
       const response = json(
@@ -108,7 +123,27 @@ export function registerProjectCoreRoutes(app: App): void {
       userId: user.id,
       thesisId: project.id
     });
-    await c.env.ALEXCLAW_RUN_QUEUE.send({ runId: run.id });
+    const dispatched = await dispatchRun(c.env.ALEXCLAW_DB, c.env.ALEXCLAW_RUN_QUEUE, run.id);
+    if (!dispatched.ok) {
+      return json(
+        {
+          error: "Failed to dispatch run",
+          project: {
+            id: project.id,
+            title: project.title,
+            thesisText: project.text,
+            createdAt: project.created_at
+          },
+          run: {
+            id: run.id,
+            status: "FAILED",
+            error: "Run dispatch failed",
+            createdAt: run.created_at
+          }
+        },
+        503
+      );
+    }
 
     return json(
       {
@@ -210,7 +245,21 @@ export function registerProjectCoreRoutes(app: App): void {
       userId: user.id,
       thesisId: projectId
     });
-    await c.env.ALEXCLAW_RUN_QUEUE.send({ runId: run.id });
+    const dispatched = await dispatchRun(c.env.ALEXCLAW_DB, c.env.ALEXCLAW_RUN_QUEUE, run.id);
+    if (!dispatched.ok) {
+      return json(
+        {
+          error: "Failed to dispatch run",
+          run: {
+            id: run.id,
+            status: "FAILED",
+            error: "Run dispatch failed",
+            createdAt: run.created_at
+          }
+        },
+        503
+      );
+    }
     return json(
       {
         run: {

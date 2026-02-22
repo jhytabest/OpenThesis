@@ -3,8 +3,6 @@ export const coreScript = [
   "      user: null,",
   "      projects: [],",
   "      chatsByProject: new Map(),",
-  "      dashboardByProject: new Map(),",
-  "      messagesByChat: new Map(),",
   "      commentsByPaper: new Map(),",
   "      openComments: new Set(),",
   "      activeProjectId: null,",

@@ -93,6 +93,29 @@ test("run queue dispatches workflow when runId exists", async () => {
   assert.equal(valid.retried, 0);
 });
 
+test("run queue acks duplicate workflow instance errors", async () => {
+  const valid = createMessage({ runId: "run_123" });
+
+  await handleQueue(
+    {
+      queue: RUN_QUEUE_NAME,
+      messages: [valid]
+    },
+    {
+      ALEXCLAW_RUN_WORKFLOW: {
+        create: async () => {
+          const error = new Error("Workflow instance already exists");
+          (error as Error & { code?: number }).code = 409;
+          throw error;
+        }
+      }
+    } as any
+  );
+
+  assert.equal(valid.acked, 1);
+  assert.equal(valid.retried, 0);
+});
+
 test("enrichment queue acks invalid payloads", async () => {
   const invalid = createMessage({ runId: "", paperId: "", openalexId: "", doi: "" });
 

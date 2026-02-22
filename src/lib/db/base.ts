@@ -27,4 +27,18 @@ const toNonNegativeInt = (value: unknown): number => {
   return Math.trunc(parsed);
 };
 
-export { all, first, nowIso, run, runChanges, toNonNegativeInt };
+const safeJsonParse = <T>(value: string | null | undefined, fallback: T): T => {
+  if (!value) {
+    return fallback;
+  }
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+};
+
+const normalizeBool = (value: boolean | undefined, fallback: boolean): boolean =>
+  typeof value === "boolean" ? value : fallback;
+
+export { all, first, normalizeBool, nowIso, run, runChanges, safeJsonParse, toNonNegativeInt };

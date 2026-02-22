@@ -10,12 +10,14 @@ export function registerProjectChatRoutes(app: App): void {
       return json({ error: "Unauthorized" }, 401);
     }
     const projectId = c.req.param("projectId");
-    const project = await HubDb.getProjectOwned(c.env.ALEXCLAW_DB, projectId, user.id);
-    if (!project) {
-      return json({ error: "Project not found" }, 404);
-    }
 
     const chats = await HubDb.listProjectChatsOwned(c.env.ALEXCLAW_DB, projectId, user.id);
+    if (chats.length === 0) {
+      const project = await HubDb.getProjectOwned(c.env.ALEXCLAW_DB, projectId, user.id);
+      if (!project) {
+        return json({ error: "Project not found" }, 404);
+      }
+    }
     return json({
       chats: chats.map((chat) => ({
         id: chat.id,
@@ -175,12 +177,13 @@ export function registerProjectChatRoutes(app: App): void {
       return json({ error: "Project not found" }, 404);
     }
 
-    const historyRows = await HubDb.listChatMessagesOwned(c.env.ALEXCLAW_DB, {
+    const historyRows = await HubDb.listRecentChatMessagesOwned(c.env.ALEXCLAW_DB, {
       projectId,
       chatId,
-      userId: user.id
+      userId: user.id,
+      limit: 40
     });
-    const history = historyRows.slice(-40).map((message) => ({
+    const history = [...historyRows].reverse().map((message) => ({
       role: message.role,
       content: message.content
     }));

@@ -7,7 +7,6 @@ import { registerAuthRoutes } from "./routes/auth.js";
 import { registerProjectCoreRoutes } from "./routes/projects-core.js";
 import { registerProjectChatRoutes } from "./routes/projects-chats.js";
 import { registerProjectPaperRoutes } from "./routes/projects-papers.js";
-import { registerLegacyRoutes } from "./routes/legacy.js";
 import { handleQueue } from "./worker/queue.js";
 
 // Worker composition only: routes and processing live in dedicated modules.
@@ -20,7 +19,6 @@ registerAuthRoutes(app);
 registerProjectCoreRoutes(app);
 registerProjectChatRoutes(app);
 registerProjectPaperRoutes(app);
-registerLegacyRoutes(app);
 
 export { AlexclawRunWorkflow } from "./worker/workflow.js";
 

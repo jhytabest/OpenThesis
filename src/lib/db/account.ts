@@ -1,5 +1,5 @@
 import type { SessionUser } from "../types.js";
-import { all, first, nowIso, run, runChanges } from "./base.js";
+import { first, nowIso, run, runChanges } from "./base.js";
 
 export const accountRepo = {
   async createOrUpdateGoogleUser(db: D1Database, input: {
@@ -98,27 +98,6 @@ export const accountRepo = {
     await run(db, `DELETE FROM sessions WHERE token_hash = ?`, tokenHash);
   },
 
-  async createThesis(db: D1Database, input: {
-    userId: string;
-    text: string;
-  }): Promise<{ id: string; title: string | null; created_at: string }> {
-    const id = crypto.randomUUID();
-    const created = nowIso();
-    await run(
-      db,
-      `INSERT INTO theses (id, user_id, text, created_at) VALUES (?, ?, ?, ?)`,
-      id,
-      input.userId,
-      input.text,
-      created
-    );
-    return {
-      id,
-      title: null,
-      created_at: created
-    };
-  },
-
   async updateThesisTitleOwned(db: D1Database, input: {
     thesisId: string;
     userId: string;
@@ -132,19 +111,6 @@ export const accountRepo = {
       input.userId
     );
     return changes > 0;
-  },
-
-  async listThesesByUser(db: D1Database, userId: string): Promise<Array<{
-    id: string;
-    title: string | null;
-    text: string;
-    created_at: string;
-  }>> {
-    return all(
-      db,
-      `SELECT id, title, text, created_at FROM theses WHERE user_id = ? ORDER BY created_at DESC`,
-      userId
-    );
   },
 
   async getThesisOwned(db: D1Database, thesisId: string, userId: string): Promise<{

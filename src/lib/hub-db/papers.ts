@@ -48,12 +48,12 @@ export const papersRepo = {
     const sort = input.sort ?? "relevance";
     const orderBy =
       sort === "recent"
-        ? "COALESCE(pp.year, 0) DESC, COALESCE(pp.citation_count, 0) DESC, pp.updated_at DESC"
+        ? "pp.year DESC, pp.citation_count DESC, pp.updated_at DESC"
         : sort === "citations"
-          ? "COALESCE(pp.citation_count, 0) DESC, pp.updated_at DESC"
+          ? "pp.citation_count DESC, pp.updated_at DESC"
           : sort === "newest"
             ? "pp.created_at DESC"
-            : "CASE WHEN pp.score_total IS NULL THEN 1 ELSE 0 END ASC, pp.score_total DESC, COALESCE(pp.citation_count, 0) DESC, pp.updated_at DESC";
+            : "pp.score_total DESC, pp.citation_count DESC, pp.updated_at DESC";
 
     const limit = Math.max(1, Math.min(500, input.limit ?? 200));
     const offset = Math.max(0, input.offset ?? 0);
@@ -62,15 +62,9 @@ export const papersRepo = {
     return all<ProjectPaperRow>(
       db,
       `SELECT
-         pp.*,
-         COALESCE(comment_counts.comment_count, 0) AS comment_count
+         pp.*
        FROM project_papers pp
        INNER JOIN theses t ON t.id = pp.project_id
-       LEFT JOIN (
-         SELECT project_paper_id, COUNT(*) AS comment_count
-         FROM project_paper_comments
-         GROUP BY project_paper_id
-       ) comment_counts ON comment_counts.project_paper_id = pp.id
        WHERE ${filters.join(" AND ")}
        ORDER BY ${orderBy}
        LIMIT ? OFFSET ?`,
@@ -86,15 +80,9 @@ export const papersRepo = {
     return first<ProjectPaperRow>(
       db,
       `SELECT
-         pp.*,
-         COALESCE(comment_counts.comment_count, 0) AS comment_count
+         pp.*
        FROM project_papers pp
        INNER JOIN theses t ON t.id = pp.project_id
-       LEFT JOIN (
-         SELECT project_paper_id, COUNT(*) AS comment_count
-         FROM project_paper_comments
-         GROUP BY project_paper_id
-       ) comment_counts ON comment_counts.project_paper_id = pp.id
        WHERE pp.id = ? AND pp.project_id = ? AND t.user_id = ?`,
       input.projectPaperId,
       input.projectId,
@@ -358,25 +346,9 @@ export const papersRepo = {
     return changes > 0;
   },
 
-  async upsertProjectPaperFromPipeline(db: D1Database, input: {
+  async syncProjectPipelinePapersFromRun(db: D1Database, input: {
+    runId: string;
     projectId: string;
-    paperId: string;
-    openalexId: string;
-    semanticScholarId?: string;
-    doi?: string;
-    title: string;
-    abstract?: string;
-    year?: number;
-    citationCount?: number;
-    fieldsOfStudy: string[];
-    lexicalScore: number;
-    graphScore: number;
-    citationScore: number;
-    totalScore: number;
-    tier: RelevanceTier;
-    pdfUrl?: string;
-    oaStatus?: string;
-    license?: string;
   }): Promise<void> {
     const now = nowIso();
     await run(
@@ -409,7 +381,40 @@ export const papersRepo = {
          is_deleted,
          created_at,
          updated_at
-       ) VALUES (?, ?, 'pipeline', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, '[]', NULL, 0, ?, ?)
+       )
+       SELECT
+         'pp_' || lower(hex(randomblob(16))),
+         r.thesis_id,
+         'pipeline',
+         p.id,
+         p.openalex_id,
+         p.semantic_scholar_id,
+         p.doi,
+         p.title,
+         p.abstract,
+         p.year,
+         p.citation_count,
+         p.fields_of_study_json,
+         rp.lexical_score,
+         rp.graph_score,
+         rp.citation_score,
+         rp.total_score,
+         rp.tier,
+         pa.pdf_url,
+         pa.oa_status,
+         pa.license,
+         0,
+         0,
+         '[]',
+         NULL,
+         0,
+         ?,
+         ?
+       FROM runs r
+       INNER JOIN run_papers rp ON rp.run_id = r.id
+       INNER JOIN papers p ON p.id = rp.paper_id
+       LEFT JOIN paper_access pa ON pa.paper_id = p.id
+       WHERE r.id = ? AND r.thesis_id = ?
        ON CONFLICT(project_id, paper_id) DO UPDATE SET
          source = 'pipeline',
          openalex_id = excluded.openalex_id,
@@ -429,27 +434,10 @@ export const papersRepo = {
          oa_status = COALESCE(excluded.oa_status, project_papers.oa_status),
          license = COALESCE(excluded.license, project_papers.license),
          updated_at = excluded.updated_at`,
-      crypto.randomUUID(),
-      input.projectId,
-      input.paperId,
-      input.openalexId,
-      input.semanticScholarId ?? null,
-      input.doi ?? null,
-      input.title,
-      input.abstract ?? null,
-      input.year ?? null,
-      input.citationCount ?? null,
-      JSON.stringify(input.fieldsOfStudy),
-      input.lexicalScore,
-      input.graphScore,
-      input.citationScore,
-      input.totalScore,
-      input.tier,
-      input.pdfUrl ?? null,
-      input.oaStatus ?? null,
-      input.license ?? null,
       now,
-      now
+      now,
+      input.runId,
+      input.projectId
     );
   },
 

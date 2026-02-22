@@ -1,7 +1,6 @@
 import type { RunStatus } from "../types.js";
-import { first } from "./base.js";
+import { all, first } from "./base.js";
 import { memoryRepo } from "./memory.js";
-import { papersRepo } from "./papers.js";
 import { projectsRepo } from "./projects.js";
 import type { ProjectContext } from "./types.js";
 
@@ -49,24 +48,19 @@ export const dashboardRepo = {
         open_access: number;
         reading_list: number;
         bookmarked: number;
+        chats: number;
       }>(
         db,
         `SELECT
-           SUM(CASE WHEN is_deleted = 0 THEN 1 ELSE 0 END) AS papers,
-           SUM(CASE WHEN is_deleted = 0 AND tier = 'FOUNDATIONAL' THEN 1 ELSE 0 END) AS foundational,
-           SUM(CASE WHEN is_deleted = 0 AND tier = 'DEPTH' THEN 1 ELSE 0 END) AS depth,
-           SUM(CASE WHEN is_deleted = 0 AND tier = 'BACKGROUND' THEN 1 ELSE 0 END) AS background,
-           SUM(
-             CASE
-               WHEN is_deleted = 0
-                 AND (pdf_url IS NOT NULL OR (oa_status IS NOT NULL AND trim(oa_status) <> ''))
-               THEN 1
-               ELSE 0
-             END
-           ) AS open_access,
-           SUM(CASE WHEN is_deleted = 0 AND in_reading_list = 1 THEN 1 ELSE 0 END) AS reading_list,
-           SUM(CASE WHEN is_deleted = 0 AND bookmarked = 1 THEN 1 ELSE 0 END) AS bookmarked
-         FROM project_papers
+           paper_count AS papers,
+           foundational_count AS foundational,
+           depth_count AS depth,
+           background_count AS background,
+           open_access_count AS open_access,
+           reading_count AS reading_list,
+           bookmarked_count AS bookmarked,
+           chat_count AS chats
+         FROM project_stats
          WHERE project_id = ?`,
         projectId
       ),
@@ -86,15 +80,6 @@ export const dashboardRepo = {
       ),
       projectsRepo.getProjectLatestRunOwned(db, projectId, userId)
     ]);
-
-    const chatCountRow = await first<{ chat_count: number }>(
-      db,
-      `SELECT COUNT(*) AS chat_count
-       FROM project_chats
-       WHERE project_id = ? AND user_id = ?`,
-      projectId,
-      userId
-    );
 
     const memoryCountRow = await first<{ memory_count: number }>(
       db,
@@ -123,7 +108,7 @@ export const dashboardRepo = {
         openAccess: Number(statsRow?.open_access ?? 0),
         readingList: Number(statsRow?.reading_list ?? 0),
         bookmarked: Number(statsRow?.bookmarked ?? 0),
-        chats: Number(chatCountRow?.chat_count ?? 0),
+        chats: Number(statsRow?.chats ?? 0),
         memoryDocs: Number(memoryCountRow?.memory_count ?? 0)
       },
       latestRun: latestRun
@@ -149,13 +134,40 @@ export const dashboardRepo = {
 
     const [memoryDocs, papers] = await Promise.all([
       memoryRepo.listProjectMemoryDocsOwned(db, input.projectId, input.userId),
-      papersRepo.listProjectPapersOwned(db, {
-        projectId: input.projectId,
-        userId: input.userId,
-        sort: "relevance",
-        includeDeleted: false,
-        limit: input.paperLimit ?? 30
-      })
+      all<{
+        id: string;
+        title: string;
+        abstract: string | null;
+        year: number | null;
+        doi: string | null;
+        score_total: number | null;
+        tier: "FOUNDATIONAL" | "DEPTH" | "BACKGROUND" | null;
+        bookmarked: number;
+        in_reading_list: number;
+      }>(
+        db,
+        `SELECT
+           pp.id,
+           pp.title,
+           pp.abstract,
+           pp.year,
+           pp.doi,
+           pp.score_total,
+           pp.tier,
+           pp.bookmarked,
+           pp.in_reading_list
+         FROM project_papers pp
+         INNER JOIN theses t ON t.id = pp.project_id
+         WHERE pp.project_id = ? AND t.user_id = ? AND pp.is_deleted = 0
+         ORDER BY
+           pp.score_total DESC,
+           pp.citation_count DESC,
+           pp.updated_at DESC
+         LIMIT ?`,
+        input.projectId,
+        input.userId,
+        Math.max(1, Math.min(100, input.paperLimit ?? 30))
+      )
     ]);
 
     return {

@@ -15,10 +15,6 @@ export function registerProjectPaperRoutes(app: App): void {
       return json({ error: "Unauthorized" }, 401);
     }
     const projectId = c.req.param("projectId");
-    const project = await HubDb.getProjectOwned(c.env.ALEXCLAW_DB, projectId, user.id);
-    if (!project) {
-      return json({ error: "Project not found" }, 404);
-    }
 
     const sortRaw = c.req.query("sort");
     const sort = sortRaw === "recent" || sortRaw === "citations" || sortRaw === "newest"
@@ -46,6 +42,13 @@ export function registerProjectPaperRoutes(app: App): void {
       limit,
       offset
     });
+
+    if (papers.length === 0) {
+      const project = await HubDb.getProjectOwned(c.env.ALEXCLAW_DB, projectId, user.id);
+      if (!project) {
+        return json({ error: "Project not found" }, 404);
+      }
+    }
 
     return json({
       papers: papers.map(mapProjectPaperResponse)
@@ -191,10 +194,6 @@ export function registerProjectPaperRoutes(app: App): void {
       return json({ error: "Unauthorized" }, 401);
     }
     const projectId = c.req.param("projectId");
-    const project = await HubDb.getProjectOwned(c.env.ALEXCLAW_DB, projectId, user.id);
-    if (!project) {
-      return json({ error: "Project not found" }, 404);
-    }
 
     const papers = await HubDb.listProjectPapersOwned(c.env.ALEXCLAW_DB, {
       projectId,
@@ -202,6 +201,12 @@ export function registerProjectPaperRoutes(app: App): void {
       sort: "relevance",
       readingOnly: true
     });
+    if (papers.length === 0) {
+      const project = await HubDb.getProjectOwned(c.env.ALEXCLAW_DB, projectId, user.id);
+      if (!project) {
+        return json({ error: "Project not found" }, 404);
+      }
+    }
     return json({
       papers: papers.map(mapProjectPaperResponse)
     });

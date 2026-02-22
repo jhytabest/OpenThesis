@@ -30,36 +30,7 @@ export const projectsRepo = {
   async listProjectsByUser(db: D1Database, userId: string): Promise<ProjectListRow[]> {
     return all<ProjectListRow>(
       db,
-      `WITH latest_runs AS (
-         SELECT
-           r.id,
-           r.thesis_id,
-           r.status,
-           r.updated_at,
-           ROW_NUMBER() OVER (
-             PARTITION BY r.thesis_id
-             ORDER BY r.created_at DESC, r.updated_at DESC
-           ) AS row_num
-         FROM runs r
-         WHERE r.user_id = ?
-       ),
-       paper_stats AS (
-         SELECT
-           project_id,
-           SUM(CASE WHEN is_deleted = 0 THEN 1 ELSE 0 END) AS paper_count,
-           SUM(CASE WHEN is_deleted = 0 AND in_reading_list = 1 THEN 1 ELSE 0 END) AS reading_count,
-           SUM(CASE WHEN is_deleted = 0 AND bookmarked = 1 THEN 1 ELSE 0 END) AS bookmarked_count
-         FROM project_papers
-         GROUP BY project_id
-       ),
-       chat_stats AS (
-         SELECT
-           project_id,
-           COUNT(*) AS chat_count
-         FROM project_chats
-         GROUP BY project_id
-       )
-       SELECT
+      `SELECT
          t.id,
          t.title,
          t.text,
@@ -70,11 +41,16 @@ export const projectsRepo = {
          COALESCE(ps.paper_count, 0) AS paper_count,
          COALESCE(ps.reading_count, 0) AS reading_count,
          COALESCE(ps.bookmarked_count, 0) AS bookmarked_count,
-         COALESCE(cs.chat_count, 0) AS chat_count
+         COALESCE(ps.chat_count, 0) AS chat_count
        FROM theses t
-       LEFT JOIN latest_runs lr ON lr.thesis_id = t.id AND lr.row_num = 1
-       LEFT JOIN paper_stats ps ON ps.project_id = t.id
-       LEFT JOIN chat_stats cs ON cs.project_id = t.id
+       LEFT JOIN runs lr ON lr.id = (
+         SELECT r2.id
+         FROM runs r2
+         WHERE r2.user_id = ? AND r2.thesis_id = t.id
+         ORDER BY r2.created_at DESC, r2.updated_at DESC
+         LIMIT 1
+       )
+       LEFT JOIN project_stats ps ON ps.project_id = t.id
        WHERE t.user_id = ?
        ORDER BY t.created_at DESC`,
       userId,

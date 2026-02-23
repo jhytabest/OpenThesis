@@ -1,181 +1,122 @@
-"use client"
-
-import * as React from "react"
 import {
-  ArrowUpCircleIcon,
-  BarChartIcon,
-  CameraIcon,
-  ClipboardListIcon,
-  DatabaseIcon,
-  FileCodeIcon,
-  FileIcon,
-  FileTextIcon,
+  BookOpenIcon,
+  BrainCircuitIcon,
   FolderIcon,
-  HelpCircleIcon,
   LayoutDashboardIcon,
-  ListIcon,
-  SearchIcon,
-  SettingsIcon,
-  UsersIcon,
-} from "lucide-react"
+  MessageSquareIcon,
+  PlusCircleIcon,
+} from "lucide-react";
 
-import { NavDocuments } from "@/components/dashboard-01/nav-documents"
-import { NavMain } from "@/components/dashboard-01/nav-main"
-import { NavSecondary } from "@/components/dashboard-01/nav-secondary"
-import { NavUser } from "@/components/dashboard-01/nav-user"
+import { NavUser } from "@/components/dashboard-01/nav-user";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar"
+} from "@/components/ui/sidebar";
+import type { ProjectListItem, SessionUser } from "@/lib/api";
+import { buildProjectPath, type ProjectSection } from "@/app/router";
 
-const data = {
-  user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "/avatars/shadcn.jpg",
-  },
-  navMain: [
-    {
-      title: "Dashboard",
-      url: "#",
-      icon: LayoutDashboardIcon,
-    },
-    {
-      title: "Lifecycle",
-      url: "#",
-      icon: ListIcon,
-    },
-    {
-      title: "Analytics",
-      url: "#",
-      icon: BarChartIcon,
-    },
-    {
-      title: "Projects",
-      url: "#",
-      icon: FolderIcon,
-    },
-    {
-      title: "Team",
-      url: "#",
-      icon: UsersIcon,
-    },
-  ],
-  navClouds: [
-    {
-      title: "Capture",
-      icon: CameraIcon,
-      isActive: true,
-      url: "#",
-      items: [
-        {
-          title: "Active Proposals",
-          url: "#",
-        },
-        {
-          title: "Archived",
-          url: "#",
-        },
-      ],
-    },
-    {
-      title: "Proposal",
-      icon: FileTextIcon,
-      url: "#",
-      items: [
-        {
-          title: "Active Proposals",
-          url: "#",
-        },
-        {
-          title: "Archived",
-          url: "#",
-        },
-      ],
-    },
-    {
-      title: "Prompts",
-      icon: FileCodeIcon,
-      url: "#",
-      items: [
-        {
-          title: "Active Proposals",
-          url: "#",
-        },
-        {
-          title: "Archived",
-          url: "#",
-        },
-      ],
-    },
-  ],
-  navSecondary: [
-    {
-      title: "Settings",
-      url: "#",
-      icon: SettingsIcon,
-    },
-    {
-      title: "Get Help",
-      url: "#",
-      icon: HelpCircleIcon,
-    },
-    {
-      title: "Search",
-      url: "#",
-      icon: SearchIcon,
-    },
-  ],
-  documents: [
-    {
-      name: "Data Library",
-      url: "#",
-      icon: DatabaseIcon,
-    },
-    {
-      name: "Reports",
-      url: "#",
-      icon: ClipboardListIcon,
-    },
-    {
-      name: "Word Assistant",
-      url: "#",
-      icon: FileIcon,
-    },
-  ],
+interface AppSidebarProps extends Omit<React.ComponentProps<typeof Sidebar>, "children"> {
+  user: SessionUser;
+  projects: ProjectListItem[];
+  currentProjectId?: string;
+  currentSection?: ProjectSection;
+  onNavigate: (path: string) => void;
+  onLogout: () => void;
 }
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+export function AppSidebar({
+  user,
+  projects,
+  currentProjectId,
+  currentSection,
+  onNavigate,
+  onLogout,
+  ...props
+}: AppSidebarProps) {
+  const sections: Array<{ key: ProjectSection; title: string; icon: React.ComponentType<{ className?: string }> }> = [
+    { key: "dashboard", title: "Dashboard", icon: LayoutDashboardIcon },
+    { key: "papers", title: "Papers", icon: BookOpenIcon },
+    { key: "chats", title: "Chats", icon: MessageSquareIcon },
+    { key: "memory", title: "Memory", icon: BrainCircuitIcon },
+  ];
+
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              asChild
+              onClick={() => onNavigate("/projects")}
               className="data-[slot=sidebar-menu-button]:!p-1.5"
             >
-              <a href="#">
-                <ArrowUpCircleIcon className="h-5 w-5" />
-                <span className="text-base font-semibold">Acme Inc.</span>
-              </a>
+              <FolderIcon className="h-5 w-5" />
+              <span className="text-base font-semibold">Alexclaw</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
+
       <SidebarContent>
-        <NavMain items={data.navMain} />
-        <NavDocuments items={data.documents} />
-        <NavSecondary items={data.navSecondary} className="mt-auto" />
+        {currentProjectId ? (
+          <SidebarGroup>
+            <SidebarGroupLabel>Sections</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {sections.map((item) => (
+                  <SidebarMenuItem key={item.key}>
+                    <SidebarMenuButton
+                      isActive={currentSection === item.key}
+                      onClick={() => onNavigate(buildProjectPath(currentProjectId, item.key))}
+                      tooltip={item.title}
+                    >
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : null}
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Projects</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton onClick={() => onNavigate("/projects")}>
+                  <PlusCircleIcon />
+                  <span>New Project</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              {projects.map((project) => (
+                <SidebarMenuItem key={project.id}>
+                  <SidebarMenuButton
+                    isActive={project.id === currentProjectId}
+                    tooltip={project.title || "Untitled"}
+                    onClick={() => onNavigate(buildProjectPath(project.id, "dashboard"))}
+                  >
+                    <FolderIcon />
+                    <span>{project.title || "Untitled project"}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
+
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser user={user} onLogout={onLogout} />
       </SidebarFooter>
     </Sidebar>
-  )
+  );
 }

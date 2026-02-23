@@ -32,8 +32,8 @@ Production-oriented MVP for thesis-to-paper-graph using:
 - `src/lib/prompts.ts`: centralized LLM prompts/templates
 - `src/providers/scholarly.ts`: centralized OpenAlex + Semantic Scholar call assembly
 - `src/providers/live.ts`: live provider adapters (OpenAI + Unpaywall, plus scholarly provider wiring)
-- `frontend/src/App.tsx`: Carbon-native app UI
-- `frontend/src/api.ts`: browser API client
+- `frontend/src/App.tsx`: frontend app shell + auth-aware routing
+- `frontend/src/lib/api/*`: typed browser API client modules
 - `vite.config.ts`: frontend build configuration
 - `migrations/0001_init.sql`: D1 schema
 - `fixtures/mock-theses.json`: reusable thesis fixtures for live testing

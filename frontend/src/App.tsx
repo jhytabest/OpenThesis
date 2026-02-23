@@ -1,24 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
+  Column,
+  Content,
+  Grid,
+  Header,
+  HeaderGlobalAction,
+  HeaderGlobalBar,
+  HeaderName,
   InlineLoading,
   InlineNotification,
+  Layer,
   Loading,
   Modal,
-  Select,
-  SelectItem,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  Tag,
-  TextArea,
   TextInput,
   Theme,
   Tile
 } from "@carbon/react";
+import { Add, Chat, Logout, Renew } from "@carbon/icons-react";
 
 import { ApiError, apiRequest } from "./api";
 import type {
@@ -35,6 +34,10 @@ import type {
   SessionUser,
   ViewKey
 } from "./types";
+import { ChatView, DashboardView, ExplorerView, NewProjectView, ReadingView } from "./components/WorkspaceViews";
+import { GuestLanding } from "./components/GuestLanding";
+import { ProjectSidebar } from "./components/ProjectSidebar";
+import { decodeListInput, isProjectUpdating, projectTitle } from "./workspace-utils";
 
 interface NotificationState {
   kind: "error" | "success" | "warning" | "info";
@@ -86,81 +89,6 @@ const DEFAULT_MANUAL_PAPER: ManualPaperForm = {
   citationCount: "",
   fields: "",
   abstract: ""
-};
-
-const decodeListInput = (raw: string): string[] => {
-  const seen = new Set<string>();
-  return raw
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .filter((item) => {
-      const key = item.toLowerCase();
-      if (seen.has(key)) {
-        return false;
-      }
-      seen.add(key);
-      return true;
-    });
-};
-
-const formatDate = (value: string | null | undefined): string => {
-  if (!value) {
-    return "";
-  }
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return value;
-  }
-};
-
-const projectTitle = (project: ProjectSummary): string => {
-  const title = typeof project.title === "string" ? project.title.trim() : "";
-  return title || `Project ${project.id.slice(0, 8)}`;
-};
-
-const projectStatusLabel = (project: ProjectSummary): string => {
-  const status = project.latestRun?.status;
-  if (status === "RUNNING" || status === "QUEUED") {
-    return "Updating suggestions";
-  }
-  if (status === "FAILED") {
-    return "Needs another pass";
-  }
-  if (status === "COMPLETED") {
-    return "Suggestions ready";
-  }
-  return "Ready";
-};
-
-const isProjectUpdating = (project: ProjectSummary): boolean =>
-  project.latestRun?.status === "RUNNING" || project.latestRun?.status === "QUEUED";
-
-const mapSortLabel = (sort: ExplorerFilters["sort"]): string => {
-  if (sort === "recent") {
-    return "Recent";
-  }
-  if (sort === "citations") {
-    return "Citations";
-  }
-  if (sort === "newest") {
-    return "Recently added";
-  }
-  return "Most relevant";
-};
-
-const dashboardStatusLine = (dashboard: ProjectDashboard | null): string => {
-  if (!dashboard?.latestRun) {
-    return "Suggestions will appear after the first background pass.";
-  }
-  if (dashboard.latestRun.status === "FAILED") {
-    return "Background suggestions need another pass.";
-  }
-  if (dashboard.latestRun.status === "RUNNING" || dashboard.latestRun.status === "QUEUED") {
-    return "Background suggestions are updating.";
-  }
-  return "Background suggestions are ready.";
 };
 
 export default function App() {
@@ -1057,798 +985,195 @@ export default function App() {
   if (authState === "guest") {
     return (
       <Theme theme="g10">
-        <main className="landing-shell">
-          <Tile className="landing-card">
-            <p className="cds--type-label-01">Alexclaw Research Hub</p>
-            <h1 className="cds--type-productive-heading-06">Your thesis workspace, now Carbon-native.</h1>
-            <p className="cds--type-body-01 understated">
-              Create a project with thesis text and background research starts automatically. Use dashboard,
-              explorer, reading list, and chat in one place.
-            </p>
-            <ul className="landing-list cds--type-body-01">
-              <li>Project-scoped papers, memory docs, and chats.</li>
-              <li>Integrated notes, comments, and reading workflow.</li>
-              <li>Background refreshes while you keep writing.</li>
-            </ul>
-            <div>
-              <Button kind="primary" href="/auth/google">
-                Sign in with Google
-              </Button>
-            </div>
-          </Tile>
-        </main>
+        <GuestLanding />
       </Theme>
     );
   }
 
   return (
     <Theme theme="g10">
-      <div className="app-root">
-        <div className="app-body">
-          <Tile className="sidebar-panel">
-            <div className="sidebar-header">
-              <h2 className="cds--type-productive-heading-03">Projects</h2>
-              <Button
-                kind="primary"
-                size="sm"
-                onClick={() => {
+      <Header aria-label="Alexclaw Research Hub">
+        <HeaderName href="/" prefix="Alexclaw">
+          Research Hub
+        </HeaderName>
+        <HeaderGlobalBar>
+          <HeaderGlobalAction
+            aria-label="Refresh suggestions"
+            onClick={() => {
+              if (activeProject) {
+                void triggerRun(activeProject.id);
+              }
+            }}
+          >
+            <Renew size={20} />
+          </HeaderGlobalAction>
+          <HeaderGlobalAction
+            aria-label="Create chat"
+            onClick={() => {
+              if (activeProject) {
+                openCreateChat(activeProject.id);
+              }
+            }}
+          >
+            <Chat size={20} />
+          </HeaderGlobalAction>
+          <HeaderGlobalAction
+            aria-label="Create project"
+            onClick={() => {
+              setActiveView("new-project");
+              setActiveChatId(null);
+            }}
+          >
+            <Add size={20} />
+          </HeaderGlobalAction>
+          <HeaderGlobalAction aria-label="Log out" onClick={() => void logout()}>
+            <Logout size={20} />
+          </HeaderGlobalAction>
+        </HeaderGlobalBar>
+      </Header>
+
+      <Content id="main-content" className="app-content">
+        <Grid fullWidth className="app-grid">
+          <Column sm={4} md={8} lg={4} xlg={4} max={4}>
+            <Layer>
+              <ProjectSidebar
+                projects={projects}
+                chatsByProject={chatsByProject}
+                activeProjectId={activeProjectId}
+                activeView={activeView}
+                activeChatId={activeChatId}
+                userEmail={user?.email}
+                onCreateProject={() => {
                   setActiveView("new-project");
                   setActiveChatId(null);
                 }}
-              >
-                New project
-              </Button>
-            </div>
+                onSelectProject={(projectId) => {
+                  setActiveProjectId(projectId);
+                  if (activeView === "new-project") {
+                    setActiveView("dashboard");
+                  }
+                  void ensureChats(projectId, false);
+                }}
+                onSelectView={(view) => setActiveView(view)}
+                onSelectChat={(chatId) => {
+                  setActiveView("chat");
+                  setActiveChatId(chatId);
+                }}
+                onOpenCreateChat={(projectId) => openCreateChat(projectId)}
+                onLogout={() => void logout()}
+              />
+            </Layer>
+          </Column>
 
-            <div className="sidebar-scroll">
-              {projects.length === 0 ? (
-                <p className="empty-note cds--type-body-01">No projects yet. Create one to start your workspace.</p>
-              ) : (
-                projects.map((project) => {
-                  const isActive = project.id === activeProjectId;
-                  const chats = chatsByProject[project.id] || [];
-                  return (
-                    <Tile key={project.id} className={`project-tile${isActive ? " active" : ""}`}>
-                      <div className="project-row">
-                        <Button
-                          kind={isActive ? "secondary" : "ghost"}
-                          size="sm"
-                          className="sidebar-button"
-                          onClick={() => {
-                            setActiveProjectId(project.id);
-                            if (activeView === "new-project") {
-                              setActiveView("dashboard");
-                            }
-                            void ensureChats(project.id, false);
-                          }}
-                        >
-                          {projectTitle(project)}
-                        </Button>
-                        <p className="project-meta cds--type-body-compact-01">
-                          {projectStatusLabel(project)} · {project.counts.papers} papers
-                          {project.latestRun?.updatedAt ? ` · ${formatDate(project.latestRun.updatedAt)}` : ""}
-                        </p>
-                      </div>
+          <Column sm={4} md={8} lg={12} xlg={12} max={12}>
+            <Layer>
+              <Tile className="main-panel">
+                <div className="main-head">
+                  <div className="main-title-block">
+                    <h1 className="cds--type-productive-heading-05">{headerTitle}</h1>
+                    <p className="main-subtitle cds--type-body-01">{headerSubtitle}</p>
+                  </div>
+                  <div className="main-actions">{renderMainActions()}</div>
+                </div>
 
-                      {isActive ? (
-                        <>
-                          <div className="subnav-row">
-                            <Button
-                              kind={activeView === "dashboard" ? "secondary" : "ghost"}
-                              size="sm"
-                              className="sidebar-button"
-                              onClick={() => setActiveView("dashboard")}
-                            >
-                              Dashboard
-                            </Button>
-                            <Button
-                              kind={activeView === "explorer" ? "secondary" : "ghost"}
-                              size="sm"
-                              className="sidebar-button"
-                              onClick={() => setActiveView("explorer")}
-                            >
-                              Paper explorer
-                            </Button>
-                            <Button
-                              kind={activeView === "reading" ? "secondary" : "ghost"}
-                              size="sm"
-                              className="sidebar-button"
-                              onClick={() => setActiveView("reading")}
-                            >
-                              Reading list
-                            </Button>
-                          </div>
+                <div className="main-notice">
+                  {notification ? (
+                    <InlineNotification
+                      lowContrast
+                      kind={notification.kind}
+                      title={notification.title}
+                      subtitle={notification.subtitle}
+                      onCloseButtonClick={() => setNotification(null)}
+                    />
+                  ) : null}
+                </div>
 
-                          <div className="chat-nav">
-                            {chats.length === 0 ? (
-                              <p className="empty-note cds--type-body-compact-01">No chats yet.</p>
-                            ) : (
-                              chats.map((chat) => (
-                                <Button
-                                  key={chat.id}
-                                  kind={activeView === "chat" && activeChatId === chat.id ? "secondary" : "ghost"}
-                                  size="sm"
-                                  className="sidebar-button"
-                                  onClick={() => {
-                                    setActiveView("chat");
-                                    setActiveChatId(chat.id);
-                                  }}
-                                >
-                                  {chat.title}
-                                </Button>
-                              ))
-                            )}
-
-                            <Button
-                              kind="tertiary"
-                              size="sm"
-                              className="sidebar-button"
-                              onClick={() => openCreateChat(project.id)}
-                            >
-                              New chat
-                            </Button>
-                          </div>
-                        </>
-                      ) : null}
-                    </Tile>
-                  );
-                })
-              )}
-            </div>
-
-            <div className="user-box">
-              <p className="user-email cds--type-body-compact-01">{user?.email}</p>
-              <Button kind="ghost" size="sm" onClick={() => void logout()}>
-                Log out
-              </Button>
-            </div>
-          </Tile>
-
-          <Tile className="main-panel">
-            <div className="main-head">
-              <div className="main-title-block">
-                <h1 className="cds--type-productive-heading-05">{headerTitle}</h1>
-                <p className="main-subtitle cds--type-body-01">{headerSubtitle}</p>
-              </div>
-              <div className="main-actions">{renderMainActions()}</div>
-            </div>
-
-            <div className="main-notice">
-              {notification ? (
-                <InlineNotification
-                  lowContrast
-                  kind={notification.kind}
-                  title={notification.title}
-                  subtitle={notification.subtitle}
-                  onCloseButtonClick={() => setNotification(null)}
-                />
-              ) : null}
-            </div>
-
-            <div className="main-content">
-              {projectsLoading && projects.length > 0 ? (
-                <InlineLoading description="Refreshing projects..." />
-              ) : null}
+                <div className="main-content">
+                  {projectsLoading && projects.length > 0 ? (
+                    <InlineLoading description="Refreshing projects..." />
+                  ) : null}
 
               {!activeProject || activeView === "new-project" ? (
-                <Tile>
-                  <form className="form-stack" onSubmit={submitNewProject}>
-                    <h3 className="cds--type-productive-heading-03">New project</h3>
-                    <p className="cds--type-body-01 understated">
-                      Paste thesis text to initialize dashboard, explorer, reading workflow, and chat.
-                    </p>
-                    <TextInput
-                      id="project-title"
-                      labelText="Project title (optional)"
-                      value={newProjectTitle}
-                      placeholder="e.g. AI and urban policy"
-                      onChange={(event) => setNewProjectTitle(event.currentTarget.value)}
-                    />
-                    <TextArea
-                      id="project-thesis"
-                      labelText="Thesis text"
-                      value={newProjectThesis}
-                      rows={8}
-                      placeholder="Paste at least 30 characters"
-                      onChange={(event) => setNewProjectThesis(event.currentTarget.value)}
-                    />
-                    <div>
-                      <Button type="submit" kind="primary" disabled={creatingProject}>
-                        {creatingProject ? "Creating project..." : "Create project"}
-                      </Button>
-                    </div>
-                  </form>
-                </Tile>
+                <NewProjectView
+                  newProjectTitle={newProjectTitle}
+                  newProjectThesis={newProjectThesis}
+                  creatingProject={creatingProject}
+                  onSetNewProjectTitle={setNewProjectTitle}
+                  onSetNewProjectThesis={setNewProjectThesis}
+                  onSubmitNewProject={submitNewProject}
+                />
               ) : null}
 
               {activeProject && activeView === "dashboard" ? (
-                <>
-                  {dashboardLoading ? <InlineLoading description="Loading dashboard..." /> : null}
-
-                  {dashboard ? (
-                    <>
-                      <section className="stat-grid">
-                        <Tile className="stat-tile">
-                          <p className="metric-label cds--type-label-01">Papers</p>
-                          <p className="metric-value cds--type-productive-heading-04">{dashboard.stats.papers}</p>
-                        </Tile>
-                        <Tile className="stat-tile">
-                          <p className="metric-label cds--type-label-01">Open Access</p>
-                          <p className="metric-value cds--type-productive-heading-04">{dashboard.stats.openAccess}</p>
-                        </Tile>
-                        <Tile className="stat-tile">
-                          <p className="metric-label cds--type-label-01">Reading List</p>
-                          <p className="metric-value cds--type-productive-heading-04">{dashboard.stats.readingList}</p>
-                        </Tile>
-                        <Tile className="stat-tile">
-                          <p className="metric-label cds--type-label-01">Chats</p>
-                          <p className="metric-value cds--type-productive-heading-04">{dashboard.stats.chats}</p>
-                        </Tile>
-                      </section>
-
-                      <Tile className="stack">
-                        <h3 className="cds--type-productive-heading-03">Project summary</h3>
-                        <p className="cds--type-body-01">
-                          {dashboard.summary.thesisSummary ||
-                            "Your thesis summary will appear after the background run completes."}
-                        </p>
-                        <div className="inline-tags">
-                          <Tag type="green">Foundational: {dashboard.stats.foundational}</Tag>
-                          <Tag type="cyan">Depth: {dashboard.stats.depth}</Tag>
-                          <Tag type="gray">Background: {dashboard.stats.background}</Tag>
-                          <Tag type="magenta">Bookmarked: {dashboard.stats.bookmarked}</Tag>
-                        </div>
-                        <p className="cds--type-body-compact-01 understated">{dashboardStatusLine(dashboard)}</p>
-                      </Tile>
-
-                      <Tile className="stack">
-                        <h3 className="cds--type-productive-heading-03">Project memory docs</h3>
-                        <p className="cds--type-body-01 understated">
-                          Chats update memory docs automatically. You can refine each document manually.
-                        </p>
-
-                        {memoryDocs.length === 0 ? (
-                          <p className="empty-note cds--type-body-01">No memory docs yet.</p>
-                        ) : (
-                          memoryDocs.map((doc) => {
-                            const draft = memoryDrafts[doc.key] || { title: doc.title, content: doc.content };
-                            return (
-                              <Tile key={doc.id} className="stack">
-                                <div className="form-grid">
-                                  <TextInput
-                                    id={`memory-title-${doc.key}`}
-                                    labelText="Title"
-                                    value={draft.title}
-                                    onChange={(event) =>
-                                      setMemoryDrafts((prev) => ({
-                                        ...prev,
-                                        [doc.key]: {
-                                          ...draft,
-                                          title: event.currentTarget.value
-                                        }
-                                      }))
-                                    }
-                                  />
-                                  <TextInput
-                                    id={`memory-source-${doc.key}`}
-                                    labelText="Source"
-                                    value={doc.source}
-                                    readOnly
-                                  />
-                                </div>
-
-                                <TextArea
-                                  id={`memory-content-${doc.key}`}
-                                  labelText="Content"
-                                  rows={8}
-                                  value={draft.content}
-                                  onChange={(event) =>
-                                    setMemoryDrafts((prev) => ({
-                                      ...prev,
-                                      [doc.key]: {
-                                        ...draft,
-                                        content: event.currentTarget.value
-                                      }
-                                    }))
-                                  }
-                                />
-
-                                <div className="table-actions">
-                                  <Button
-                                    kind="secondary"
-                                    size="sm"
-                                    disabled={savingMemoryKey === doc.key}
-                                    onClick={() => void saveMemoryDoc(activeProject.id, doc.key)}
-                                  >
-                                    {savingMemoryKey === doc.key ? "Saving..." : "Save memory doc"}
-                                  </Button>
-                                  <p className="cds--type-body-compact-01 understated">
-                                    Updated {formatDate(doc.updatedAt)}
-                                  </p>
-                                </div>
-                              </Tile>
-                            );
-                          })
-                        )}
-                      </Tile>
-                    </>
-                  ) : null}
-                </>
+                <DashboardView
+                  dashboardLoading={dashboardLoading}
+                  dashboard={dashboard}
+                  memoryDocs={memoryDocs}
+                  memoryDrafts={memoryDrafts}
+                  setMemoryDrafts={setMemoryDrafts}
+                  savingMemoryKey={savingMemoryKey}
+                  onSaveMemoryDoc={(docKey) => void saveMemoryDoc(activeProject.id, docKey)}
+                />
               ) : null}
 
               {activeProject && activeView === "explorer" ? (
-                <>
-                  <Tile>
-                    <form className="form-stack" onSubmit={applyExplorerFilters}>
-                      <h3 className="cds--type-productive-heading-03">Filters</h3>
-                      <div className="form-grid compact">
-                        <TextInput
-                          id="explorer-query"
-                          labelText="Search"
-                          value={explorerDraftFilters.query}
-                          placeholder="Title, abstract, DOI"
-                          onChange={(event) =>
-                            setExplorerDraftFilters((prev) => ({
-                              ...prev,
-                              query: event.currentTarget.value
-                            }))
-                          }
-                        />
-
-                        <Select
-                          id="explorer-sort"
-                          labelText="Sort"
-                          value={explorerDraftFilters.sort}
-                          onChange={(event) =>
-                            setExplorerDraftFilters((prev) => ({
-                              ...prev,
-                              sort: event.currentTarget.value as ExplorerFilters["sort"]
-                            }))
-                          }
-                        >
-                          <SelectItem value="relevance" text="Most relevant" />
-                          <SelectItem value="recent" text="Recent" />
-                          <SelectItem value="citations" text="Citations" />
-                          <SelectItem value="newest" text="Recently added" />
-                        </Select>
-
-                        <Select
-                          id="explorer-tier"
-                          labelText="Tier"
-                          value={explorerDraftFilters.tier}
-                          onChange={(event) =>
-                            setExplorerDraftFilters((prev) => ({
-                              ...prev,
-                              tier: event.currentTarget.value as ExplorerFilters["tier"]
-                            }))
-                          }
-                        >
-                          <SelectItem value="" text="All tiers" />
-                          <SelectItem value="FOUNDATIONAL" text="Foundational" />
-                          <SelectItem value="DEPTH" text="Depth" />
-                          <SelectItem value="BACKGROUND" text="Background" />
-                        </Select>
-                      </div>
-
-                      <div className="form-grid">
-                        <Select
-                          id="explorer-oa"
-                          labelText="Open access"
-                          value={explorerDraftFilters.oaOnly ? "true" : "false"}
-                          onChange={(event) =>
-                            setExplorerDraftFilters((prev) => ({
-                              ...prev,
-                              oaOnly: event.currentTarget.value === "true"
-                            }))
-                          }
-                        >
-                          <SelectItem value="false" text="All" />
-                          <SelectItem value="true" text="Open access only" />
-                        </Select>
-
-                        <Select
-                          id="explorer-bookmarked"
-                          labelText="Bookmarks"
-                          value={explorerDraftFilters.bookmarkedOnly ? "true" : "false"}
-                          onChange={(event) =>
-                            setExplorerDraftFilters((prev) => ({
-                              ...prev,
-                              bookmarkedOnly: event.currentTarget.value === "true"
-                            }))
-                          }
-                        >
-                          <SelectItem value="false" text="All" />
-                          <SelectItem value="true" text="Bookmarked only" />
-                        </Select>
-                      </div>
-
-                      <div className="table-actions">
-                        <Button type="submit" kind="secondary" size="sm">
-                          Apply filters
-                        </Button>
-                        <p className="cds--type-body-compact-01 understated">
-                          Sorting by: {mapSortLabel(explorerFilters.sort)}
-                        </p>
-                      </div>
-                    </form>
-                  </Tile>
-
-                  <Tile>
-                    <form className="form-stack" onSubmit={submitManualPaper}>
-                      <h3 className="cds--type-productive-heading-03">Add paper manually</h3>
-                      <div className="form-grid">
-                        <TextInput
-                          id="manual-title"
-                          labelText="Title"
-                          value={manualPaper.title}
-                          onChange={(event) =>
-                            setManualPaper((prev) => ({ ...prev, title: event.currentTarget.value }))
-                          }
-                        />
-                        <TextInput
-                          id="manual-doi"
-                          labelText="DOI"
-                          value={manualPaper.doi}
-                          onChange={(event) =>
-                            setManualPaper((prev) => ({ ...prev, doi: event.currentTarget.value }))
-                          }
-                        />
-                      </div>
-
-                      <div className="form-grid">
-                        <TextInput
-                          id="manual-year"
-                          labelText="Year"
-                          value={manualPaper.year}
-                          onChange={(event) =>
-                            setManualPaper((prev) => ({ ...prev, year: event.currentTarget.value }))
-                          }
-                        />
-                        <TextInput
-                          id="manual-citations"
-                          labelText="Citation count"
-                          value={manualPaper.citationCount}
-                          onChange={(event) =>
-                            setManualPaper((prev) => ({ ...prev, citationCount: event.currentTarget.value }))
-                          }
-                        />
-                      </div>
-
-                      <TextInput
-                        id="manual-fields"
-                        labelText="Fields of study (comma-separated)"
-                        value={manualPaper.fields}
-                        onChange={(event) =>
-                          setManualPaper((prev) => ({ ...prev, fields: event.currentTarget.value }))
-                        }
-                      />
-
-                      <TextArea
-                        id="manual-abstract"
-                        labelText="Abstract"
-                        value={manualPaper.abstract}
-                        rows={4}
-                        onChange={(event) =>
-                          setManualPaper((prev) => ({ ...prev, abstract: event.currentTarget.value }))
-                        }
-                      />
-
-                      <div>
-                        <Button type="submit" kind="primary" disabled={addingPaper}>
-                          {addingPaper ? "Adding paper..." : "Add paper"}
-                        </Button>
-                      </div>
-                    </form>
-                  </Tile>
-
-                  <Tile className="stack">
-                    <h3 className="cds--type-productive-heading-03">Paper explorer</h3>
-                    {explorerLoading ? <InlineLoading description="Loading papers..." /> : null}
-                    {explorerPapers.length === 0 && !explorerLoading ? (
-                      <p className="empty-note cds--type-body-01">No papers match the current filters.</p>
-                    ) : null}
-
-                    {explorerPapers.length > 0 ? (
-                      <div className="stack">
-                        <Table aria-label="Project papers">
-                          <TableHead>
-                            <TableRow>
-                              <TableHeader>Paper</TableHeader>
-                              <TableHeader>Tier</TableHeader>
-                              <TableHeader>Year</TableHeader>
-                              <TableHeader>Citations</TableHeader>
-                              <TableHeader>Actions</TableHeader>
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {explorerPapers.map((paper) => (
-                              <TableRow key={paper.id}>
-                                <TableCell>
-                                  <div className="table-meta">
-                                    <p className="paper-title cds--type-body-01">{paper.title}</p>
-                                    <p className="paper-subtext cds--type-body-compact-01">
-                                      {(paper.abstract || "No abstract available").slice(0, 220)}
-                                    </p>
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <Tag type="gray">{paper.tier || "MANUAL"}</Tag>
-                                </TableCell>
-                                <TableCell>{paper.year || "n/a"}</TableCell>
-                                <TableCell>{paper.citationCount || 0}</TableCell>
-                                <TableCell>
-                                  <div className="table-actions">
-                                    <Button
-                                      kind="ghost"
-                                      size="sm"
-                                      disabled={updatingPaperId === paper.id}
-                                      onClick={() =>
-                                        void updatePaper(activeProject.id, paper.id, {
-                                          bookmarked: !paper.bookmarked
-                                        })
-                                      }
-                                    >
-                                      {paper.bookmarked ? "Bookmarked" : "Bookmark"}
-                                    </Button>
-
-                                    <Button
-                                      kind="ghost"
-                                      size="sm"
-                                      disabled={updatingPaperId === paper.id}
-                                      onClick={() =>
-                                        void updatePaper(activeProject.id, paper.id, {
-                                          inReadingList: !paper.inReadingList
-                                        })
-                                      }
-                                    >
-                                      {paper.inReadingList ? "In reading list" : "Add to reading list"}
-                                    </Button>
-
-                                    <Button
-                                      kind="ghost"
-                                      size="sm"
-                                      onClick={() => void toggleComments(activeProject.id, paper.id)}
-                                    >
-                                      {openComments[paper.id] ? "Hide comments" : `Comments (${paper.commentCount || 0})`}
-                                    </Button>
-
-                                    <Button
-                                      kind="danger--ghost"
-                                      size="sm"
-                                      onClick={() => requestDeletePaper(activeProject.id, paper.id, "explorer")}
-                                    >
-                                      Remove
-                                    </Button>
-
-                                    {paper.access?.pdfUrl ? (
-                                      <Button kind="tertiary" size="sm" href={paper.access.pdfUrl} target="_blank">
-                                        Open PDF
-                                      </Button>
-                                    ) : null}
-                                    {paper.doi ? (
-                                      <Button
-                                        kind="tertiary"
-                                        size="sm"
-                                        href={`https://doi.org/${encodeURIComponent(paper.doi)}`}
-                                        target="_blank"
-                                      >
-                                        DOI
-                                      </Button>
-                                    ) : null}
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-
-                        {explorerPapers
-                          .filter((paper) => openComments[paper.id])
-                          .map((paper) => {
-                            const comments = paperComments[paper.id] || [];
-                            return (
-                              <Tile key={`comments-${paper.id}`} className="comments-panel">
-                                <h4 className="cds--type-productive-heading-03">Comments · {paper.title}</h4>
-                                {comments.length === 0 ? (
-                                  <p className="empty-note cds--type-body-compact-01">No comments yet.</p>
-                                ) : (
-                                  <ul className="comments-list">
-                                    {comments.map((comment) => (
-                                      <li key={comment.id} className="comment-item cds--type-body-compact-01">
-                                        <p className="cds--type-body-compact-01">{comment.body}</p>
-                                        <p className="cds--type-body-compact-01">
-                                          {formatDate(comment.createdAt)}
-                                        </p>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
-
-                                <TextArea
-                                  id={`comment-${paper.id}`}
-                                  labelText="Add comment"
-                                  rows={3}
-                                  value={commentDrafts[paper.id] || ""}
-                                  onChange={(event) =>
-                                    setCommentDrafts((prev) => ({
-                                      ...prev,
-                                      [paper.id]: event.currentTarget.value
-                                    }))
-                                  }
-                                />
-                                <div>
-                                  <Button kind="secondary" size="sm" onClick={() => void saveComment(activeProject.id, paper.id)}>
-                                    Save comment
-                                  </Button>
-                                </div>
-                              </Tile>
-                            );
-                          })}
-                      </div>
-                    ) : null}
-                  </Tile>
-                </>
+                <ExplorerView
+                  explorerFilters={explorerFilters}
+                  explorerDraftFilters={explorerDraftFilters}
+                  setExplorerDraftFilters={setExplorerDraftFilters}
+                  explorerLoading={explorerLoading}
+                  explorerPapers={explorerPapers}
+                  paperComments={paperComments}
+                  openComments={openComments}
+                  commentDrafts={commentDrafts}
+                  setCommentDrafts={setCommentDrafts}
+                  manualPaper={manualPaper}
+                  setManualPaper={setManualPaper}
+                  addingPaper={addingPaper}
+                  updatingPaperId={updatingPaperId}
+                  onApplyExplorerFilters={applyExplorerFilters}
+                  onSubmitManualPaper={submitManualPaper}
+                  onUpdatePaper={(paperId, patch) => void updatePaper(activeProject.id, paperId, patch)}
+                  onToggleComments={(paperId) => void toggleComments(activeProject.id, paperId)}
+                  onRequestDeletePaper={(paperId, sourceView) =>
+                    requestDeletePaper(activeProject.id, paperId, sourceView)
+                  }
+                  onSaveComment={(paperId) => void saveComment(activeProject.id, paperId)}
+                />
               ) : null}
 
               {activeProject && activeView === "reading" ? (
-                <Tile className="reading-list">
-                  <h3 className="cds--type-productive-heading-03">Reading list</h3>
-                  {readingLoading ? <InlineLoading description="Loading reading list..." /> : null}
-                  {readingPapers.length === 0 && !readingLoading ? (
-                    <p className="empty-note cds--type-body-01">
-                      Reading list is empty. Add papers from the explorer.
-                    </p>
-                  ) : null}
-
-                  {readingPapers.map((paper) => {
-                    const draft = readingDrafts[paper.id] || { tags: "", comment: "" };
-                    return (
-                      <Tile key={paper.id} className="stack">
-                        <div className="table-meta">
-                          <h4 className="paper-title cds--type-productive-heading-03">{paper.title}</h4>
-                          <p className="paper-subtext cds--type-body-compact-01">
-                            {paper.year || "Year n/a"} · {paper.citationCount || 0} citations · {paper.tier || "MANUAL"}
-                          </p>
-                        </div>
-
-                        <TextInput
-                          id={`reading-tags-${paper.id}`}
-                          labelText="Tags (comma-separated)"
-                          value={draft.tags}
-                          onChange={(event) =>
-                            setReadingDrafts((prev) => ({
-                              ...prev,
-                              [paper.id]: {
-                                ...draft,
-                                tags: event.currentTarget.value
-                              }
-                            }))
-                          }
-                        />
-
-                        <TextArea
-                          id={`reading-comment-${paper.id}`}
-                          labelText="Comments"
-                          rows={4}
-                          value={draft.comment}
-                          onChange={(event) =>
-                            setReadingDrafts((prev) => ({
-                              ...prev,
-                              [paper.id]: {
-                                ...draft,
-                                comment: event.currentTarget.value
-                              }
-                            }))
-                          }
-                        />
-
-                        <div className="table-actions">
-                          <Button
-                            kind="secondary"
-                            size="sm"
-                            disabled={savingReadingPaperId === paper.id}
-                            onClick={() => void saveReadingEntry(activeProject.id, paper.id)}
-                          >
-                            {savingReadingPaperId === paper.id ? "Saving..." : "Save notes"}
-                          </Button>
-
-                          <Button
-                            kind="ghost"
-                            size="sm"
-                            onClick={() =>
-                              void updatePaper(activeProject.id, paper.id, {
-                                bookmarked: !paper.bookmarked
-                              })
-                            }
-                          >
-                            {paper.bookmarked ? "Bookmarked" : "Bookmark"}
-                          </Button>
-
-                          <Button
-                            kind="danger--ghost"
-                            size="sm"
-                            onClick={() =>
-                              void updatePaper(activeProject.id, paper.id, {
-                                inReadingList: false
-                              })
-                            }
-                          >
-                            Remove from list
-                          </Button>
-
-                          <Button
-                            kind="danger--tertiary"
-                            size="sm"
-                            onClick={() => requestDeletePaper(activeProject.id, paper.id, "reading")}
-                          >
-                            Delete paper
-                          </Button>
-
-                          {paper.access?.pdfUrl ? (
-                            <Button kind="tertiary" size="sm" href={paper.access.pdfUrl} target="_blank">
-                              Open PDF
-                            </Button>
-                          ) : null}
-                        </div>
-                      </Tile>
-                    );
-                  })}
-                </Tile>
+                <ReadingView
+                  readingLoading={readingLoading}
+                  readingPapers={readingPapers}
+                  readingDrafts={readingDrafts}
+                  setReadingDrafts={setReadingDrafts}
+                  savingReadingPaperId={savingReadingPaperId}
+                  onSaveReadingEntry={(paperId) => void saveReadingEntry(activeProject.id, paperId)}
+                  onUpdatePaper={(paperId, patch) => void updatePaper(activeProject.id, paperId, patch)}
+                  onRequestDeletePaper={(paperId, sourceView) =>
+                    requestDeletePaper(activeProject.id, paperId, sourceView)
+                  }
+                />
               ) : null}
 
               {activeProject && activeView === "chat" ? (
-                <>
-                  {!activeChat ? (
-                    <Tile className="stack">
-                      <h3 className="cds--type-productive-heading-03">Start a chat</h3>
-                      <p className="cds--type-body-01 understated">
-                        Open a chat to debate your thesis, synthesize findings, and plan writing tasks.
-                      </p>
-                      <div>
-                        <Button kind="primary" onClick={() => openCreateChat(activeProject.id)}>
-                          Create chat
-                        </Button>
-                      </div>
-                    </Tile>
-                  ) : (
-                    <Tile className="chat-shell">
-                      <div className="chat-messages" id="chat-messages">
-                        {chatLoading ? <InlineLoading description="Loading messages..." /> : null}
-                        {!chatLoading && chatMessages.length === 0 ? (
-                          <p className="empty-note cds--type-body-01">No messages yet. Start the conversation.</p>
-                        ) : null}
-
-                        {chatMessages.map((message) => (
-                          <div
-                            key={message.id}
-                            className={`chat-row ${message.role === "user" ? "user" : "assistant"}`}
-                          >
-                            <div className="chat-bubble cds--type-body-01">{message.content}</div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <form className="chat-composer" onSubmit={submitChatMessage}>
-                        <TextArea
-                          id="chat-input"
-                          labelText="Message"
-                          hideLabel
-                          rows={3}
-                          placeholder="Ask anything about your thesis, sources, or next plan."
-                          value={chatInput}
-                          onChange={(event) => setChatInput(event.currentTarget.value)}
-                        />
-                        <Button type="submit" kind="primary" disabled={sendingMessage}>
-                          {sendingMessage ? "Sending..." : "Send"}
-                        </Button>
-                      </form>
-                    </Tile>
-                  )}
-                </>
+                <ChatView
+                  activeChat={activeChat}
+                  chatLoading={chatLoading}
+                  chatMessages={chatMessages}
+                  chatInput={chatInput}
+                  sendingMessage={sendingMessage}
+                  onSetChatInput={setChatInput}
+                  onOpenCreateChat={() => openCreateChat(activeProject.id)}
+                  onSubmitChatMessage={submitChatMessage}
+                />
               ) : null}
-            </div>
-          </Tile>
-        </div>
+                </div>
+              </Tile>
+            </Layer>
+          </Column>
+        </Grid>
 
         <Modal
           open={chatModal !== null}
@@ -1883,7 +1208,7 @@ export default function App() {
         >
           <p className="cds--type-body-01">{confirmModal?.body}</p>
         </Modal>
-      </div>
+      </Content>
     </Theme>
   );
 }

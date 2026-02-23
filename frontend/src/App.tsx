@@ -994,7 +994,10 @@ export default function App() {
     <Theme theme="g10">
       <Header aria-label="Alexclaw Research Hub">
         <HeaderName href="/" prefix="Alexclaw">
-          Research Hub
+          <span className="brand-lockup">
+            <img className="brand-logo" src="/brand/alexclaw-logo-64.png" alt="Alexclaw logo" />
+            <span>Research Hub</span>
+          </span>
         </HeaderName>
         <HeaderGlobalBar>
           <HeaderGlobalAction

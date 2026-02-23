@@ -1,5 +1,28 @@
 :root {
   color-scheme: light;
+  --brand-claw-red: #d6342e;
+  --brand-claw-red-hover: #b82d27;
+  --brand-claw-red-active: #8f231f;
+}
+
+.cds--g10 {
+  --cds-background-brand: var(--brand-claw-red);
+  --cds-border-interactive: var(--brand-claw-red);
+  --cds-chat-avatar-user: var(--brand-claw-red);
+  --cds-chat-button: var(--brand-claw-red);
+  --cds-chat-button-text-hover: var(--brand-claw-red-hover);
+  --cds-focus: var(--brand-claw-red);
+  --cds-icon-interactive: var(--brand-claw-red);
+  --cds-interactive: var(--brand-claw-red);
+  --cds-link-primary: var(--brand-claw-red);
+  --cds-link-primary-hover: var(--brand-claw-red-hover);
+  --cds-link-secondary: var(--brand-claw-red-hover);
+  --cds-button-primary: var(--brand-claw-red);
+  --cds-button-tertiary: var(--brand-claw-red);
+  --cds-button-primary-hover: var(--brand-claw-red-hover);
+  --cds-button-tertiary-hover: var(--brand-claw-red-hover);
+  --cds-button-primary-active: var(--brand-claw-red-active);
+  --cds-button-tertiary-active: var(--brand-claw-red-active);
 }
 
 html,
@@ -13,6 +36,18 @@ body,
 body {
   background: var(--cds-background);
   color: var(--cds-text-primary);
+}
+
+.brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cds-spacing-03);
+}
+
+.brand-logo {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--cds-border-radius-medium);
 }
 
 .app-content {
@@ -292,6 +327,12 @@ body {
   padding: clamp(var(--cds-spacing-06), 3vw, var(--cds-spacing-09));
   display: grid;
   gap: var(--cds-spacing-05);
+}
+
+.landing-logo {
+  width: clamp(4rem, 12vw, 6rem);
+  height: auto;
+  border-radius: var(--cds-border-radius-medium);
 }
 
 .landing-list {

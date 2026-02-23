@@ -7,6 +7,7 @@ export function GuestLanding() {
         <Layer>
           <main className="landing-shell">
             <Tile className="landing-card">
+              <img className="landing-logo" src="/brand/alexclaw-logo-192.png" alt="Alexclaw logo" />
               <p className="cds--type-label-01">Alexclaw Research Hub</p>
               <h1 className="cds--type-productive-heading-06">Your thesis workspace, now Carbon-native.</h1>
               <p className="cds--type-body-01 understated">

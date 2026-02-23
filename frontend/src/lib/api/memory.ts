@@ -7,7 +7,8 @@ export const memoryApi = {
   },
 
   update(projectId: string, docKey: string, input: { title?: string; content: string }): Promise<ApiOkResponse> {
-    return apiFetch<ApiOkResponse>(`/api/projects/${projectId}/memory-docs/${docKey}`, {
+    const encodedDocKey = encodeURIComponent(docKey);
+    return apiFetch<ApiOkResponse>(`/api/projects/${projectId}/memory-docs/${encodedDocKey}`, {
       method: "PATCH",
       body: JSON.stringify(input),
     });

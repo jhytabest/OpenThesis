@@ -58,6 +58,26 @@ const fetchJson = async <T>(
 
 const OPENAI_RESPONSE_TIMEOUT_MS = 180_000;
 
+const sanitizeHttpUrl = (value: string | undefined): string | undefined => {
+  if (!value) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 2048) {
+    return undefined;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    const protocol = parsed.protocol.toLowerCase();
+    if (protocol !== "http:" && protocol !== "https:") {
+      return undefined;
+    }
+    return parsed.toString();
+  } catch {
+    return undefined;
+  }
+};
+
 const extractOutputText = (payload: {
   output_text?: string;
   output?: Array<{ content?: Array<{ type?: string; text?: string }> }>;
@@ -300,7 +320,7 @@ export const buildLiveUnpaywallProvider = (env: Env) => {
       };
 
       return {
-        pdfUrl: payload.best_oa_location?.url_for_pdf,
+        pdfUrl: sanitizeHttpUrl(payload.best_oa_location?.url_for_pdf),
         oaStatus: payload.oa_status,
         license: payload.license
       };

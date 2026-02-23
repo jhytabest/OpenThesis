@@ -16,6 +16,19 @@ interface MemoryPageProps {
   projectId: string;
 }
 
+const MAX_MEMORY_DOC_KEY_LENGTH = 64;
+
+const normalizeDocKey = (value: string): string =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_-]/g, "")
+    .replace(/_+/g, "_")
+    .replace(/-+/g, "-")
+    .replace(/^[_-]+|[_-]+$/g, "")
+    .slice(0, MAX_MEMORY_DOC_KEY_LENGTH);
+
 export function MemoryPage({ projectId }: MemoryPageProps) {
   const [docs, setDocs] = useState<ProjectMemoryDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,8 +91,13 @@ export function MemoryPage({ projectId }: MemoryPageProps) {
   };
 
   const handleCreateDoc = async () => {
-    const normalized = newDocKey.trim().toLowerCase().replace(/\s+/g, "_");
+    const normalized = normalizeDocKey(newDocKey);
     if (!normalized) {
+      toast.error("Doc key must include at least one letter or number.");
+      return;
+    }
+    if (docs.some((doc) => doc.key === normalized)) {
+      toast.error("A memory doc with this key already exists.");
       return;
     }
     await saveDoc(normalized, normalized.replace(/_/g, " "), "");

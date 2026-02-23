@@ -33,7 +33,7 @@ export const queryBool = (value: string | undefined): boolean | undefined => {
   return undefined;
 };
 
-export const normalizeStringArray = (value: unknown, max = 40): string[] => {
+export const normalizeStringArray = (value: unknown, max = 40, maxItemLength = 80): string[] => {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -43,7 +43,7 @@ export const normalizeStringArray = (value: unknown, max = 40): string[] => {
     if (typeof raw !== "string") {
       continue;
     }
-    const trimmed = raw.trim();
+    const trimmed = raw.trim().slice(0, maxItemLength);
     if (!trimmed) {
       continue;
     }
@@ -58,6 +58,26 @@ export const normalizeStringArray = (value: unknown, max = 40): string[] => {
     }
   }
   return output;
+};
+
+const sanitizeHttpUrl = (value: string | null | undefined): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 2048) {
+    return null;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    const protocol = parsed.protocol.toLowerCase();
+    if (protocol !== "http:" && protocol !== "https:") {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
 };
 
 const readAuthToken = (authorizationHeader: string | undefined): string | null => {
@@ -103,7 +123,7 @@ export const mapProjectPaperResponse = (paper: ProjectPaperRow) => ({
   },
   tier: paper.tier,
   access: {
-    pdfUrl: paper.pdf_url,
+    pdfUrl: sanitizeHttpUrl(paper.pdf_url),
     oaStatus: paper.oa_status,
     license: paper.license
   },

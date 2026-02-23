@@ -3,6 +3,9 @@ import { Db } from "../lib/db.js";
 import { HubDb } from "../lib/hub-db.js";
 import {
   MAX_THESIS_TEXT_LENGTH,
+  MAX_MEMORY_DOC_CONTENT_LENGTH,
+  MAX_MEMORY_DOC_KEY_LENGTH,
+  MAX_MEMORY_DOC_TITLE_LENGTH,
   PROJECT_CREATE_MIN_INTERVAL_MS,
   RUN_CREATE_MIN_INTERVAL_MS,
 } from "../app/constants.js";
@@ -22,6 +25,7 @@ const dispatchRun = async (
     return { ok: false, error: message };
   }
 };
+const MEMORY_DOC_KEY_PATTERN = /^[a-z0-9](?:[a-z0-9_-]{0,63})$/;
 
 export function registerProjectCoreRoutes(app: App): void {
   app.get("/api/projects", async (c) => {
@@ -319,21 +323,39 @@ export function registerProjectCoreRoutes(app: App): void {
     if (!project) {
       return json({ error: "Project not found" }, 404);
     }
-    const docKey = c.req.param("docKey").trim();
+    const docKey = c.req.param("docKey").trim().toLowerCase();
     if (!docKey) {
       return json({ error: "docKey is required" }, 400);
     }
+    if (docKey.length > MAX_MEMORY_DOC_KEY_LENGTH || !MEMORY_DOC_KEY_PATTERN.test(docKey)) {
+      return json(
+        {
+          error:
+            "docKey must be lowercase alphanumeric and may include '_' or '-', up to 64 characters"
+        },
+        400
+      );
+    }
     const bodyRaw = await c.req.json().catch(() => ({}));
-    const body = bodyRaw as { title?: string; content?: string };
-    const content = body.content?.trim();
-    if (!content) {
+    const body = bodyRaw as { title?: unknown; content?: unknown };
+    if (typeof body.content !== "string") {
       return json({ error: "content is required" }, 400);
+    }
+    if (body.content.length > MAX_MEMORY_DOC_CONTENT_LENGTH) {
+      return json({ error: `content must be at most ${MAX_MEMORY_DOC_CONTENT_LENGTH} characters` }, 413);
+    }
+    if (body.title !== undefined && typeof body.title !== "string") {
+      return json({ error: "title must be a string" }, 400);
+    }
+    const title = typeof body.title === "string" ? body.title.trim() : undefined;
+    if (title && title.length > MAX_MEMORY_DOC_TITLE_LENGTH) {
+      return json({ error: `title must be at most ${MAX_MEMORY_DOC_TITLE_LENGTH} characters` }, 413);
     }
     await HubDb.upsertProjectMemoryDoc(c.env.ALEXCLAW_DB, {
       projectId,
       key: docKey,
-      title: body.title?.trim() || docKey.replace(/_/g, " "),
-      content,
+      title: title || docKey.replace(/_/g, " "),
+      content: body.content,
       source: "manual"
     });
     return json({ ok: true });

@@ -49,6 +49,22 @@ interface DataTableProps {
   onDeletePaper: (paper: ProjectPaper) => void;
 }
 
+const toSafeExternalHttpUrl = (value: string | null): string | null => {
+  if (!value) {
+    return null;
+  }
+  try {
+    const parsed = new URL(value);
+    const protocol = parsed.protocol.toLowerCase();
+    if (protocol !== "http:" && protocol !== "https:") {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+};
+
 export function DataTable({
   papers,
   loading,
@@ -139,8 +155,8 @@ export function DataTable({
         </Button>
       </div>
 
-      <div className="overflow-hidden rounded-lg border">
-        <Table>
+      <div className="overflow-x-auto rounded-lg border">
+        <Table className="min-w-[760px]">
           <TableHeader>
             <TableRow>
               <TableHead>Title</TableHead>
@@ -160,62 +176,75 @@ export function DataTable({
               </TableRow>
             ) : null}
 
-            {papers.map((paper) => (
-              <TableRow key={paper.id}>
-                <TableCell>
-                  <div className="space-y-1">
-                    <p className="font-medium leading-tight">{paper.title}</p>
-                    {paper.doi ? <p className="text-xs text-muted-foreground">DOI: {paper.doi}</p> : null}
-                    {paper.abstract ? (
-                      <p className="line-clamp-2 text-xs text-muted-foreground">{paper.abstract}</p>
-                    ) : null}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {paper.tier ? <Badge variant="outline">{paper.tier}</Badge> : <span className="text-muted-foreground">-</span>}
-                </TableCell>
-                <TableCell>{paper.citationCount ?? "-"}</TableCell>
-                <TableCell>{paper.year ?? "-"}</TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-2">
-                    {paper.bookmarked ? <Badge>Bookmarked</Badge> : null}
-                    {paper.inReadingList ? <Badge variant="secondary">Reading</Badge> : null}
-                    {paper.access.pdfUrl || paper.access.oaStatus ? (
-                      <Badge variant="outline">OA</Badge>
-                    ) : null}
-                  </div>
-                </TableCell>
-                <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button size="icon" variant="ghost">
-                        <MoreHorizontalIcon />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onToggleBookmark(paper)}>
-                        {paper.bookmarked ? "Remove bookmark" : "Bookmark"}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onToggleReading(paper)}>
-                        {paper.inReadingList ? "Remove from reading list" : "Add to reading list"}
-                      </DropdownMenuItem>
-                      {paper.access.pdfUrl ? (
-                        <DropdownMenuItem asChild>
-                          <a href={paper.access.pdfUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2">
-                            <ExternalLinkIcon className="size-4" />
-                            Open PDF
-                          </a>
-                        </DropdownMenuItem>
+            {papers.map((paper) => {
+              const safePdfUrl = toSafeExternalHttpUrl(paper.access.pdfUrl);
+              return (
+                <TableRow key={paper.id}>
+                  <TableCell>
+                    <div className="space-y-1">
+                      <p className="font-medium leading-tight">{paper.title}</p>
+                      {paper.doi ? <p className="text-xs text-muted-foreground">DOI: {paper.doi}</p> : null}
+                      {paper.abstract ? (
+                        <p className="line-clamp-2 text-xs text-muted-foreground">{paper.abstract}</p>
                       ) : null}
-                      <DropdownMenuItem onClick={() => onDeletePaper(paper)} className="text-destructive focus:text-destructive">
-                        <Trash2Icon className="size-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {paper.tier ? (
+                      <Badge variant="outline">{paper.tier}</Badge>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell>{paper.citationCount ?? "-"}</TableCell>
+                  <TableCell>{paper.year ?? "-"}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-2">
+                      {paper.bookmarked ? <Badge>Bookmarked</Badge> : null}
+                      {paper.inReadingList ? <Badge variant="secondary">Reading</Badge> : null}
+                      {safePdfUrl || paper.access.oaStatus ? <Badge variant="outline">OA</Badge> : null}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="icon" variant="ghost">
+                          <MoreHorizontalIcon />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => onToggleBookmark(paper)}>
+                          {paper.bookmarked ? "Remove bookmark" : "Bookmark"}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onToggleReading(paper)}>
+                          {paper.inReadingList ? "Remove from reading list" : "Add to reading list"}
+                        </DropdownMenuItem>
+                        {safePdfUrl ? (
+                          <DropdownMenuItem asChild>
+                            <a
+                              href={safePdfUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2"
+                            >
+                              <ExternalLinkIcon className="size-4" />
+                              Open PDF
+                            </a>
+                          </DropdownMenuItem>
+                        ) : null}
+                        <DropdownMenuItem
+                          onClick={() => onDeletePaper(paper)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2Icon className="size-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>

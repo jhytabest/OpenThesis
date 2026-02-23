@@ -1,6 +1,14 @@
 import { Auth } from "../lib/auth.js";
 import { HubDb } from "../lib/hub-db.js";
 import {
+  MAX_PAPER_ABSTRACT_LENGTH,
+  MAX_PAPER_COMMENT_LENGTH,
+  MAX_PAPER_DOI_LENGTH,
+  MAX_PAPER_NOTE_LENGTH,
+  MAX_PAPER_TAG_LENGTH,
+  MAX_PAPER_TITLE_LENGTH
+} from "../app/constants.js";
+import {
   json,
   mapProjectPaperResponse,
   normalizeStringArray,
@@ -85,19 +93,51 @@ export function registerProjectPaperRoutes(app: App): void {
     if (!title) {
       return json({ error: "title is required" }, 400);
     }
+    if (title.length > MAX_PAPER_TITLE_LENGTH) {
+      return json({ error: `title must be at most ${MAX_PAPER_TITLE_LENGTH} characters` }, 413);
+    }
+    const abstract = typeof body.abstract === "string" ? body.abstract.trim() : undefined;
+    if (abstract && abstract.length > MAX_PAPER_ABSTRACT_LENGTH) {
+      return json({ error: `abstract must be at most ${MAX_PAPER_ABSTRACT_LENGTH} characters` }, 413);
+    }
+    const doi = typeof body.doi === "string" ? body.doi.trim() : undefined;
+    if (doi && doi.length > MAX_PAPER_DOI_LENGTH) {
+      return json({ error: `doi must be at most ${MAX_PAPER_DOI_LENGTH} characters` }, 413);
+    }
+    const noteText =
+      typeof body.comment === "string"
+        ? body.comment.trim()
+        : typeof body.note === "string"
+          ? body.note.trim()
+          : undefined;
+    if (noteText && noteText.length > MAX_PAPER_NOTE_LENGTH) {
+      return json({ error: `note/comment must be at most ${MAX_PAPER_NOTE_LENGTH} characters` }, 413);
+    }
+    if (
+      typeof body.year === "number" &&
+      (!Number.isInteger(body.year) || body.year < 1000 || body.year > 3000)
+    ) {
+      return json({ error: "year must be an integer between 1000 and 3000" }, 400);
+    }
+    if (
+      typeof body.citationCount === "number" &&
+      (!Number.isInteger(body.citationCount) || body.citationCount < 0)
+    ) {
+      return json({ error: "citationCount must be a non-negative integer" }, 400);
+    }
 
     const created = await HubDb.addManualProjectPaper(c.env.ALEXCLAW_DB, {
       projectId,
       title,
-      abstract: body.abstract,
+      abstract,
       year: typeof body.year === "number" ? body.year : undefined,
-      doi: body.doi,
+      doi,
       citationCount: typeof body.citationCount === "number" ? body.citationCount : undefined,
-      fieldsOfStudy: normalizeStringArray(body.fieldsOfStudy),
+      fieldsOfStudy: normalizeStringArray(body.fieldsOfStudy, 40, MAX_PAPER_TAG_LENGTH),
       bookmarked: body.bookmarked,
       inReadingList: body.inReadingList,
-      noteText: body.comment ?? body.note,
-      tags: normalizeStringArray(body.tags)
+      noteText,
+      tags: normalizeStringArray(body.tags, 40, MAX_PAPER_TAG_LENGTH)
     });
 
     const paper = await HubDb.getProjectPaperOwned(c.env.ALEXCLAW_DB, {
@@ -138,8 +178,43 @@ export function registerProjectPaperRoutes(app: App): void {
       isDeleted?: boolean;
     };
 
-    if (typeof body.title === "string" && !body.title.trim()) {
-      return json({ error: "title cannot be empty" }, 400);
+    if (typeof body.title === "string") {
+      const title = body.title.trim();
+      if (!title) {
+        return json({ error: "title cannot be empty" }, 400);
+      }
+      if (title.length > MAX_PAPER_TITLE_LENGTH) {
+        return json({ error: `title must be at most ${MAX_PAPER_TITLE_LENGTH} characters` }, 413);
+      }
+    }
+    if (typeof body.abstract === "string" && body.abstract.trim().length > MAX_PAPER_ABSTRACT_LENGTH) {
+      return json({ error: `abstract must be at most ${MAX_PAPER_ABSTRACT_LENGTH} characters` }, 413);
+    }
+    if (typeof body.doi === "string" && body.doi.trim().length > MAX_PAPER_DOI_LENGTH) {
+      return json({ error: `doi must be at most ${MAX_PAPER_DOI_LENGTH} characters` }, 413);
+    }
+    const patchNoteText =
+      typeof body.comment === "string"
+        ? body.comment.trim()
+        : typeof body.note === "string"
+          ? body.note.trim()
+          : body.comment === null || body.note === null
+            ? null
+            : undefined;
+    if (typeof patchNoteText === "string" && patchNoteText.length > MAX_PAPER_NOTE_LENGTH) {
+      return json({ error: `note/comment must be at most ${MAX_PAPER_NOTE_LENGTH} characters` }, 413);
+    }
+    if (
+      typeof body.year === "number" &&
+      (!Number.isInteger(body.year) || body.year < 1000 || body.year > 3000)
+    ) {
+      return json({ error: "year must be an integer between 1000 and 3000" }, 400);
+    }
+    if (
+      typeof body.citationCount === "number" &&
+      (!Number.isInteger(body.citationCount) || body.citationCount < 0)
+    ) {
+      return json({ error: "citationCount must be a non-negative integer" }, 400);
     }
 
     const updated = await HubDb.updateProjectPaperOwned(c.env.ALEXCLAW_DB, {
@@ -147,16 +222,20 @@ export function registerProjectPaperRoutes(app: App): void {
       projectId,
       userId: user.id,
       patch: {
-        title: body.title,
-        abstract: body.abstract,
+        title: typeof body.title === "string" ? body.title.trim() : body.title,
+        abstract: typeof body.abstract === "string" ? body.abstract.trim() : body.abstract,
         year: body.year,
-        doi: body.doi,
+        doi: typeof body.doi === "string" ? body.doi.trim() : body.doi,
         citationCount: body.citationCount,
-        fieldsOfStudy: Array.isArray(body.fieldsOfStudy) ? normalizeStringArray(body.fieldsOfStudy) : undefined,
+        fieldsOfStudy: Array.isArray(body.fieldsOfStudy)
+          ? normalizeStringArray(body.fieldsOfStudy, 40, MAX_PAPER_TAG_LENGTH)
+          : undefined,
         bookmarked: body.bookmarked,
         inReadingList: body.inReadingList,
-        noteText: body.comment ?? body.note,
-        tags: Array.isArray(body.tags) ? normalizeStringArray(body.tags) : undefined,
+        noteText: patchNoteText,
+        tags: Array.isArray(body.tags)
+          ? normalizeStringArray(body.tags, 40, MAX_PAPER_TAG_LENGTH)
+          : undefined,
         isDeleted: body.isDeleted
       }
     });
@@ -246,6 +325,9 @@ export function registerProjectPaperRoutes(app: App): void {
     const commentBody = body.body?.trim();
     if (!commentBody) {
       return json({ error: "body is required" }, 400);
+    }
+    if (commentBody.length > MAX_PAPER_COMMENT_LENGTH) {
+      return json({ error: `body must be at most ${MAX_PAPER_COMMENT_LENGTH} characters` }, 413);
     }
     const comment = await HubDb.createProjectPaperCommentOwned(c.env.ALEXCLAW_DB, {
       projectId,

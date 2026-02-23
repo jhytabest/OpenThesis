@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2Icon } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
@@ -7,11 +7,6 @@ import { buildProjectPath, navigate, parseRoute, subscribeNavigation } from "@/a
 import { Login01Page } from "@/components/login-01-page";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { DashboardPage } from "@/features/dashboard/dashboard-page";
-import { ChatsPage } from "@/features/chats/chats-page";
-import { MemoryPage } from "@/features/memory/memory-page";
-import { PapersPage } from "@/features/papers/papers-page";
-import { ProjectsPage } from "@/features/projects/projects-page";
 import {
   ApiError,
   authApi,
@@ -19,6 +14,33 @@ import {
   type ProjectListItem,
   type SessionUser,
 } from "@/lib/api";
+
+const ProjectsPage = lazy(async () => {
+  const module = await import("@/features/projects/projects-page");
+  return { default: module.ProjectsPage };
+});
+const DashboardPage = lazy(async () => {
+  const module = await import("@/features/dashboard/dashboard-page");
+  return { default: module.DashboardPage };
+});
+const PapersPage = lazy(async () => {
+  const module = await import("@/features/papers/papers-page");
+  return { default: module.PapersPage };
+});
+const ChatsPage = lazy(async () => {
+  const module = await import("@/features/chats/chats-page");
+  return { default: module.ChatsPage };
+});
+const MemoryPage = lazy(async () => {
+  const module = await import("@/features/memory/memory-page");
+  return { default: module.MemoryPage };
+});
+
+const RouteLoading = () => (
+  <div className="flex min-h-[40vh] items-center justify-center">
+    <Loader2Icon className="size-5 animate-spin" />
+  </div>
+);
 
 export default function App() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
@@ -84,6 +106,24 @@ export default function App() {
     }
   }, [user, loadProjects]);
 
+  useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+    if (!user && route.page !== "login") {
+      navigate("/login", true);
+    }
+  }, [authLoading, route.page, user]);
+
+  useEffect(() => {
+    if (authLoading || !user) {
+      return;
+    }
+    if (route.page === "login" || route.page === "home") {
+      navigate("/projects", true);
+    }
+  }, [authLoading, route.page, user]);
+
   const handleCreateProject = async (input: { title?: string; thesisText: string }) => {
     setCreatingProject(true);
     try {
@@ -121,9 +161,6 @@ export default function App() {
   }
 
   if (!user) {
-    if (route.page !== "login") {
-      navigate("/login", true);
-    }
     return (
       <>
         <Login01Page errorMessage={authError} />
@@ -132,14 +169,8 @@ export default function App() {
     );
   }
 
-  if (route.page === "login") {
-    navigate("/projects", true);
-    return null;
-  }
-
-  if (route.page === "home") {
-    navigate("/projects", true);
-    return null;
+  if (route.page === "login" || route.page === "home") {
+    return <RouteLoading />;
   }
 
   const header =
@@ -217,7 +248,7 @@ export default function App() {
         onNavigate={(path) => navigate(path)}
         onLogout={() => void handleLogout()}
       >
-        {content}
+        <Suspense fallback={<RouteLoading />}>{content}</Suspense>
       </AppShell>
       <Toaster richColors position="top-right" />
     </>

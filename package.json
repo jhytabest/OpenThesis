@@ -12,8 +12,9 @@
     "debug:live:all": "tsx scripts/run-live-debug.ts --all",
     "typecheck": "tsc --noEmit",
     "typecheck:ui": "tsc -p frontend/tsconfig.json",
+    "lint": "npm run typecheck && npm run typecheck:ui",
     "test": "tsx --test tests/**/*.test.ts",
-    "verify": "npm run typecheck && npm run typecheck:ui && npm run build:ui && npm test",
+    "verify": "npm run lint && npm run build:ui && npm test",
     "d1:migrate:local": "wrangler d1 migrations apply alexclaw --local",
     "d1:migrate:remote": "wrangler d1 migrations apply alexclaw --remote"
   },

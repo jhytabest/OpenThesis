@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { buildProjectPath, navigate } from "@/app/router";
 import {
   ApiError,
   chatsApi,
@@ -29,19 +30,29 @@ export function ChatsPage({ projectId, routeChatId, onOpenChat }: ChatsPageProps
 
   const activeChatId = useMemo(() => {
     if (routeChatId) {
-      return routeChatId;
+      const routeChatExists = chats.some((chat) => chat.id === routeChatId);
+      if (routeChatExists) {
+        return routeChatId;
+      }
+      if (loadingChats) {
+        return undefined;
+      }
     }
     return chats[0]?.id;
-  }, [routeChatId, chats]);
+  }, [routeChatId, chats, loadingChats]);
 
   const loadChats = useCallback(async () => {
     setLoadingChats(true);
     try {
       const response = await chatsApi.list(projectId);
       setChats(response.chats);
-      const nextChatId = routeChatId || response.chats[0]?.id;
+      const routeChatStillExists =
+        Boolean(routeChatId) && response.chats.some((chat) => chat.id === routeChatId);
+      const nextChatId = routeChatStillExists ? routeChatId : response.chats[0]?.id;
       if (nextChatId && nextChatId !== routeChatId) {
         onOpenChat(nextChatId);
+      } else if (!nextChatId && routeChatId) {
+        navigate(buildProjectPath(projectId, "chats"), true);
       }
     } catch (error) {
       const message = error instanceof ApiError ? error.message : "Failed to load chats";

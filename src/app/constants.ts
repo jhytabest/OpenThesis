@@ -1,4 +1,13 @@
 export const MAX_THESIS_TEXT_LENGTH = 50_000;
+export const MAX_MEMORY_DOC_KEY_LENGTH = 64;
+export const MAX_MEMORY_DOC_TITLE_LENGTH = 160;
+export const MAX_MEMORY_DOC_CONTENT_LENGTH = 30_000;
+export const MAX_PAPER_TITLE_LENGTH = 500;
+export const MAX_PAPER_ABSTRACT_LENGTH = 20_000;
+export const MAX_PAPER_DOI_LENGTH = 255;
+export const MAX_PAPER_NOTE_LENGTH = 10_000;
+export const MAX_PAPER_TAG_LENGTH = 80;
+export const MAX_PAPER_COMMENT_LENGTH = 4_000;
 export const PROJECT_CREATE_MIN_INTERVAL_MS = 3_000;
 export const RUN_CREATE_MIN_INTERVAL_MS = 15_000;
 export const RUN_QUEUE_NAME = "alexclaw-runs";

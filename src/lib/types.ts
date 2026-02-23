@@ -53,6 +53,7 @@ export interface ScoredPaper {
 }
 
 export interface Env {
+  ASSETS?: Fetcher;
   ALEXCLAW_DB: D1Database;
   ALEXCLAW_RUN_QUEUE: Queue;
   ALEXCLAW_ENRICH_QUEUE: Queue<UnpaywallEnrichmentMessage>;

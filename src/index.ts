@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import type { Env } from "./lib/types.js";
-import { renderHomeHtml } from "./ui/index.js";
 import type { AppBindings } from "./routes/types.js";
 import { registerInternalRoutes } from "./routes/internal.js";
 import { registerAuthRoutes } from "./routes/auth.js";
@@ -12,13 +11,29 @@ import { handleQueue } from "./worker/queue.js";
 // Worker composition only: routes and processing live in dedicated modules.
 const app = new Hono<AppBindings>();
 
-app.get("/", (c) => c.html(renderHomeHtml()));
-
 registerInternalRoutes(app);
 registerAuthRoutes(app);
 registerProjectCoreRoutes(app);
 registerProjectChatRoutes(app);
 registerProjectPaperRoutes(app);
+
+const isAssetRequestPath = (pathname: string): boolean =>
+  !(
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/auth/") ||
+    pathname.startsWith("/internal/")
+  );
+
+app.get("*", async (c) => {
+  const pathname = new URL(c.req.url).pathname;
+  if (!isAssetRequestPath(pathname)) {
+    return c.notFound();
+  }
+  if (!c.env.ASSETS) {
+    return c.text("Static assets binding is not configured", 503);
+  }
+  return c.env.ASSETS.fetch(c.req.raw);
+});
 
 export { AlexclawRunWorkflow } from "./worker/workflow.js";
 

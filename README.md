@@ -32,7 +32,9 @@ Production-oriented MVP for thesis-to-paper-graph using:
 - `src/lib/prompts.ts`: centralized LLM prompts/templates
 - `src/providers/scholarly.ts`: centralized OpenAlex + Semantic Scholar call assembly
 - `src/providers/live.ts`: live provider adapters (OpenAI + Unpaywall, plus scholarly provider wiring)
-- `src/ui/index.ts`: app UI HTML
+- `frontend/src/App.tsx`: Carbon-native app UI
+- `frontend/src/api.ts`: browser API client
+- `vite.config.ts`: frontend build configuration
 - `migrations/0001_init.sql`: D1 schema
 - `fixtures/mock-theses.json`: reusable thesis fixtures for live testing
 - `scripts/run-live-debug.ts`: local live-debug harness with full API logs
@@ -75,6 +77,8 @@ npm run d1:migrate:local
 ```bash
 npm run dev
 ```
+
+This command builds the Carbon frontend (`dist/client`) before starting the Worker.
 
 ## Local Live Debug Loop
 

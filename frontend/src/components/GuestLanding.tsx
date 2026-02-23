@@ -1,31 +1,31 @@
-import { Button, Column, Grid, Layer, Tile } from "@carbon/react";
+import { Button, Column, Grid, Layer, ListItem, Stack, Tile, UnorderedList } from "@carbon/react";
 
 export function GuestLanding() {
   return (
-    <Grid fullWidth className="landing-grid">
-      <Column sm={4} md={8} lg={8} xlg={8} max={8}>
+    <Grid fullWidth>
+      <Column sm={4} md={8} lg={10} xlg={10} max={10}>
         <Layer>
-          <main className="landing-shell">
-            <Tile className="landing-card">
-              <img className="landing-logo" src="/brand/alexclaw-logo-192.png" alt="Alexclaw logo" />
+          <Tile>
+            <Stack gap={7}>
+              <img src="/brand/alexclaw-logo-192.png" alt="Alexclaw logo" width={96} height={96} />
               <p className="cds--type-label-01">Alexclaw Research Hub</p>
               <h1 className="cds--type-productive-heading-06">Your thesis workspace, now Carbon-native.</h1>
-              <p className="cds--type-body-01 understated">
+              <p className="cds--type-body-01">
                 Create a project with thesis text and background research starts automatically. Use dashboard,
                 explorer, reading list, and chat in one place.
               </p>
-              <ul className="landing-list cds--type-body-01">
-                <li>Project-scoped papers, memory docs, and chats.</li>
-                <li>Integrated notes, comments, and reading workflow.</li>
-                <li>Background refreshes while you keep writing.</li>
-              </ul>
+              <UnorderedList>
+                <ListItem>Project-scoped papers, memory docs, and chats.</ListItem>
+                <ListItem>Integrated notes, comments, and reading workflow.</ListItem>
+                <ListItem>Background refreshes while you keep writing.</ListItem>
+              </UnorderedList>
               <div>
                 <Button kind="primary" href="/auth/google">
                   Sign in with Google
                 </Button>
               </div>
-            </Tile>
-          </main>
+            </Stack>
+          </Tile>
         </Layer>
       </Column>
     </Grid>

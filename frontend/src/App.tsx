@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
+  ButtonSet,
   Column,
   Content,
   Grid,
@@ -13,6 +14,7 @@ import {
   Layer,
   Loading,
   Modal,
+  Stack,
   TextInput,
   Theme,
   Tile
@@ -994,10 +996,7 @@ export default function App() {
     <Theme theme="g10">
       <Header aria-label="Alexclaw Research Hub">
         <HeaderName href="/" prefix="Alexclaw">
-          <span className="brand-lockup">
-            <img className="brand-logo" src="/brand/alexclaw-logo-64.png" alt="Alexclaw logo" />
-            <span>Research Hub</span>
-          </span>
+          <img src="/brand/alexclaw-logo-64.png" alt="Alexclaw logo" width={24} height={24} /> Research Hub
         </HeaderName>
         <HeaderGlobalBar>
           <HeaderGlobalAction
@@ -1035,8 +1034,8 @@ export default function App() {
         </HeaderGlobalBar>
       </Header>
 
-      <Content id="main-content" className="app-content">
-        <Grid fullWidth className="app-grid">
+      <Content id="main-content">
+        <Grid fullWidth>
           <Column sm={4} md={8} lg={4} xlg={4} max={4}>
             <Layer>
               <ProjectSidebar
@@ -1070,16 +1069,14 @@ export default function App() {
 
           <Column sm={4} md={8} lg={12} xlg={12} max={12}>
             <Layer>
-              <Tile className="main-panel">
-                <div className="main-head">
-                  <div className="main-title-block">
+              <Tile>
+                <Stack gap={6}>
+                  <Stack gap={4}>
                     <h1 className="cds--type-productive-heading-05">{headerTitle}</h1>
-                    <p className="main-subtitle cds--type-body-01">{headerSubtitle}</p>
-                  </div>
-                  <div className="main-actions">{renderMainActions()}</div>
-                </div>
+                    <p className="cds--type-body-01">{headerSubtitle}</p>
+                    {activeProject ? <ButtonSet>{renderMainActions()}</ButtonSet> : null}
+                  </Stack>
 
-                <div className="main-notice">
                   {notification ? (
                     <InlineNotification
                       lowContrast
@@ -1089,90 +1086,88 @@ export default function App() {
                       onCloseButtonClick={() => setNotification(null)}
                     />
                   ) : null}
-                </div>
 
-                <div className="main-content">
                   {projectsLoading && projects.length > 0 ? (
                     <InlineLoading description="Refreshing projects..." />
                   ) : null}
 
-              {!activeProject || activeView === "new-project" ? (
-                <NewProjectView
-                  newProjectTitle={newProjectTitle}
-                  newProjectThesis={newProjectThesis}
-                  creatingProject={creatingProject}
-                  onSetNewProjectTitle={setNewProjectTitle}
-                  onSetNewProjectThesis={setNewProjectThesis}
-                  onSubmitNewProject={submitNewProject}
-                />
-              ) : null}
+                  {!activeProject || activeView === "new-project" ? (
+                    <NewProjectView
+                      newProjectTitle={newProjectTitle}
+                      newProjectThesis={newProjectThesis}
+                      creatingProject={creatingProject}
+                      onSetNewProjectTitle={setNewProjectTitle}
+                      onSetNewProjectThesis={setNewProjectThesis}
+                      onSubmitNewProject={submitNewProject}
+                    />
+                  ) : null}
 
-              {activeProject && activeView === "dashboard" ? (
-                <DashboardView
-                  dashboardLoading={dashboardLoading}
-                  dashboard={dashboard}
-                  memoryDocs={memoryDocs}
-                  memoryDrafts={memoryDrafts}
-                  setMemoryDrafts={setMemoryDrafts}
-                  savingMemoryKey={savingMemoryKey}
-                  onSaveMemoryDoc={(docKey) => void saveMemoryDoc(activeProject.id, docKey)}
-                />
-              ) : null}
+                  {activeProject && activeView === "dashboard" ? (
+                    <DashboardView
+                      dashboardLoading={dashboardLoading}
+                      dashboard={dashboard}
+                      memoryDocs={memoryDocs}
+                      memoryDrafts={memoryDrafts}
+                      setMemoryDrafts={setMemoryDrafts}
+                      savingMemoryKey={savingMemoryKey}
+                      onSaveMemoryDoc={(docKey) => void saveMemoryDoc(activeProject.id, docKey)}
+                    />
+                  ) : null}
 
-              {activeProject && activeView === "explorer" ? (
-                <ExplorerView
-                  explorerFilters={explorerFilters}
-                  explorerDraftFilters={explorerDraftFilters}
-                  setExplorerDraftFilters={setExplorerDraftFilters}
-                  explorerLoading={explorerLoading}
-                  explorerPapers={explorerPapers}
-                  paperComments={paperComments}
-                  openComments={openComments}
-                  commentDrafts={commentDrafts}
-                  setCommentDrafts={setCommentDrafts}
-                  manualPaper={manualPaper}
-                  setManualPaper={setManualPaper}
-                  addingPaper={addingPaper}
-                  updatingPaperId={updatingPaperId}
-                  onApplyExplorerFilters={applyExplorerFilters}
-                  onSubmitManualPaper={submitManualPaper}
-                  onUpdatePaper={(paperId, patch) => void updatePaper(activeProject.id, paperId, patch)}
-                  onToggleComments={(paperId) => void toggleComments(activeProject.id, paperId)}
-                  onRequestDeletePaper={(paperId, sourceView) =>
-                    requestDeletePaper(activeProject.id, paperId, sourceView)
-                  }
-                  onSaveComment={(paperId) => void saveComment(activeProject.id, paperId)}
-                />
-              ) : null}
+                  {activeProject && activeView === "explorer" ? (
+                    <ExplorerView
+                      explorerFilters={explorerFilters}
+                      explorerDraftFilters={explorerDraftFilters}
+                      setExplorerDraftFilters={setExplorerDraftFilters}
+                      explorerLoading={explorerLoading}
+                      explorerPapers={explorerPapers}
+                      paperComments={paperComments}
+                      openComments={openComments}
+                      commentDrafts={commentDrafts}
+                      setCommentDrafts={setCommentDrafts}
+                      manualPaper={manualPaper}
+                      setManualPaper={setManualPaper}
+                      addingPaper={addingPaper}
+                      updatingPaperId={updatingPaperId}
+                      onApplyExplorerFilters={applyExplorerFilters}
+                      onSubmitManualPaper={submitManualPaper}
+                      onUpdatePaper={(paperId, patch) => void updatePaper(activeProject.id, paperId, patch)}
+                      onToggleComments={(paperId) => void toggleComments(activeProject.id, paperId)}
+                      onRequestDeletePaper={(paperId, sourceView) =>
+                        requestDeletePaper(activeProject.id, paperId, sourceView)
+                      }
+                      onSaveComment={(paperId) => void saveComment(activeProject.id, paperId)}
+                    />
+                  ) : null}
 
-              {activeProject && activeView === "reading" ? (
-                <ReadingView
-                  readingLoading={readingLoading}
-                  readingPapers={readingPapers}
-                  readingDrafts={readingDrafts}
-                  setReadingDrafts={setReadingDrafts}
-                  savingReadingPaperId={savingReadingPaperId}
-                  onSaveReadingEntry={(paperId) => void saveReadingEntry(activeProject.id, paperId)}
-                  onUpdatePaper={(paperId, patch) => void updatePaper(activeProject.id, paperId, patch)}
-                  onRequestDeletePaper={(paperId, sourceView) =>
-                    requestDeletePaper(activeProject.id, paperId, sourceView)
-                  }
-                />
-              ) : null}
+                  {activeProject && activeView === "reading" ? (
+                    <ReadingView
+                      readingLoading={readingLoading}
+                      readingPapers={readingPapers}
+                      readingDrafts={readingDrafts}
+                      setReadingDrafts={setReadingDrafts}
+                      savingReadingPaperId={savingReadingPaperId}
+                      onSaveReadingEntry={(paperId) => void saveReadingEntry(activeProject.id, paperId)}
+                      onUpdatePaper={(paperId, patch) => void updatePaper(activeProject.id, paperId, patch)}
+                      onRequestDeletePaper={(paperId, sourceView) =>
+                        requestDeletePaper(activeProject.id, paperId, sourceView)
+                      }
+                    />
+                  ) : null}
 
-              {activeProject && activeView === "chat" ? (
-                <ChatView
-                  activeChat={activeChat}
-                  chatLoading={chatLoading}
-                  chatMessages={chatMessages}
-                  chatInput={chatInput}
-                  sendingMessage={sendingMessage}
-                  onSetChatInput={setChatInput}
-                  onOpenCreateChat={() => openCreateChat(activeProject.id)}
-                  onSubmitChatMessage={submitChatMessage}
-                />
-              ) : null}
-                </div>
+                  {activeProject && activeView === "chat" ? (
+                    <ChatView
+                      activeChat={activeChat}
+                      chatLoading={chatLoading}
+                      chatMessages={chatMessages}
+                      chatInput={chatInput}
+                      sendingMessage={sendingMessage}
+                      onSetChatInput={setChatInput}
+                      onOpenCreateChat={() => openCreateChat(activeProject.id)}
+                      onSubmitChatMessage={submitChatMessage}
+                    />
+                  ) : null}
+                </Stack>
               </Tile>
             </Layer>
           </Column>

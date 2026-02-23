@@ -11,28 +11,28 @@ export default function Dashboard01Page({ dashboard }: Dashboard01PageProps) {
   return (
     <div className="flex flex-1 flex-col">
       <div className="@container/main flex flex-1 flex-col gap-2">
-        <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
+        <div className="flex flex-col gap-3 py-3">
           <SectionCards dashboard={dashboard} />
 
-          <div className="px-4 lg:px-6">
+          <div className="px-3 md:px-4 lg:px-5">
             <ChartAreaInteractive dashboard={dashboard} />
           </div>
 
-          <div className="grid gap-4 px-4 lg:grid-cols-2 lg:px-6">
+          <div className="grid gap-3 px-3 md:px-4 lg:grid-cols-2 lg:px-5">
             <Card>
-              <CardHeader>
-                <CardTitle>Thesis Summary</CardTitle>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Thesis Summary</CardTitle>
               </CardHeader>
-              <CardContent className="text-sm text-muted-foreground">
+              <CardContent className="pt-0 text-sm text-muted-foreground">
                 {dashboard.summary.thesisSummary || "No thesis summary available yet. Run the pipeline to generate one."}
               </CardContent>
             </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle>Progress Log</CardTitle>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Progress Log</CardTitle>
               </CardHeader>
-              <CardContent className="max-h-72 overflow-auto whitespace-pre-wrap text-sm text-muted-foreground">
+              <CardContent className="max-h-64 overflow-auto whitespace-pre-wrap pt-0 text-sm text-muted-foreground">
                 {dashboard.summary.progressLog || "No progress log entries yet."}
               </CardContent>
             </Card>

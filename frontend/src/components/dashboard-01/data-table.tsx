@@ -26,20 +26,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { ProjectPaper, RelevanceTier } from "@/lib/api";
+import type { ProjectPaper } from "@/lib/api";
 
 interface DataTableProps {
   papers: ProjectPaper[];
   loading: boolean;
   query: string;
   sort: "relevance" | "recent" | "citations" | "newest";
-  tier: RelevanceTier | "ALL";
   oaOnly: boolean;
   bookmarkedOnly: boolean;
   readingOnly: boolean;
   onQueryChange: (value: string) => void;
   onSortChange: (value: "relevance" | "recent" | "citations" | "newest") => void;
-  onTierChange: (value: RelevanceTier | "ALL") => void;
   onOaOnlyChange: (value: boolean) => void;
   onBookmarkedOnlyChange: (value: boolean) => void;
   onReadingOnlyChange: (value: boolean) => void;
@@ -70,13 +68,11 @@ export function DataTable({
   loading,
   query,
   sort,
-  tier,
   oaOnly,
   bookmarkedOnly,
   readingOnly,
   onQueryChange,
   onSortChange,
-  onTierChange,
   onOaOnlyChange,
   onBookmarkedOnlyChange,
   onReadingOnlyChange,
@@ -86,14 +82,15 @@ export function DataTable({
   onDeletePaper,
 }: DataTableProps) {
   return (
-    <div className="flex flex-col gap-4 px-4 lg:px-6">
-      <div className="grid gap-3 rounded-lg border p-3 md:grid-cols-4 xl:grid-cols-8">
+    <div className="flex flex-col gap-3 px-3 md:px-4 lg:px-5">
+      <div className="grid gap-2 rounded-lg border p-2 md:grid-cols-3 xl:grid-cols-6">
         <div className="xl:col-span-2">
           <Label htmlFor="paper-query" className="sr-only">
             Search papers
           </Label>
           <Input
             id="paper-query"
+            className="h-9"
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             placeholder="Search title, abstract, DOI..."
@@ -102,7 +99,7 @@ export function DataTable({
 
         <div>
           <Select value={sort} onValueChange={(value) => onSortChange(value as typeof sort)}>
-            <SelectTrigger>
+            <SelectTrigger className="h-9">
               <SelectValue placeholder="Sort" />
             </SelectTrigger>
             <SelectContent>
@@ -114,26 +111,12 @@ export function DataTable({
           </Select>
         </div>
 
-        <div>
-          <Select value={tier} onValueChange={(value) => onTierChange(value as RelevanceTier | "ALL")}>
-            <SelectTrigger>
-              <SelectValue placeholder="Tier" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All tiers</SelectItem>
-              <SelectItem value="FOUNDATIONAL">Foundational</SelectItem>
-              <SelectItem value="DEPTH">Depth</SelectItem>
-              <SelectItem value="BACKGROUND">Background</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex h-9 items-center gap-2 rounded-md border px-2 text-xs">
           <Checkbox checked={oaOnly} onCheckedChange={(checked) => onOaOnlyChange(checked === true)} />
           OA only
         </label>
 
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex h-9 items-center gap-2 rounded-md border px-2 text-xs">
           <Checkbox
             checked={bookmarkedOnly}
             onCheckedChange={(checked) => onBookmarkedOnlyChange(checked === true)}
@@ -141,7 +124,7 @@ export function DataTable({
           Bookmarked only
         </label>
 
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex h-9 items-center gap-2 rounded-md border px-2 text-xs">
           <Checkbox
             checked={readingOnly}
             onCheckedChange={(checked) => onReadingOnlyChange(checked === true)}
@@ -149,28 +132,33 @@ export function DataTable({
           Reading list only
         </label>
 
-        <Button variant="outline" onClick={onRefresh} className="justify-self-end" disabled={loading}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onRefresh}
+          className="h-9 justify-self-end"
+          disabled={loading}
+        >
           <RefreshCwIcon className={loading ? "animate-spin" : ""} />
           Refresh
         </Button>
       </div>
 
       <div className="overflow-x-auto rounded-lg border">
-        <Table className="min-w-[760px]">
+        <Table className="min-w-[680px]">
           <TableHeader>
             <TableRow>
-              <TableHead>Title</TableHead>
-              <TableHead>Tier</TableHead>
-              <TableHead>Citations</TableHead>
-              <TableHead>Year</TableHead>
-              <TableHead>Flags</TableHead>
-              <TableHead className="w-[80px] text-right">Actions</TableHead>
+              <TableHead className="h-10 px-3 text-xs">Title</TableHead>
+              <TableHead className="h-10 px-3 text-xs">Citations</TableHead>
+              <TableHead className="h-10 px-3 text-xs">Year</TableHead>
+              <TableHead className="h-10 px-3 text-xs">Flags</TableHead>
+              <TableHead className="h-10 w-[70px] px-3 text-right text-xs">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {!loading && papers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={5} className="h-20 text-center text-muted-foreground">
                   No papers found for current filters.
                 </TableCell>
               </TableRow>
@@ -180,35 +168,28 @@ export function DataTable({
               const safePdfUrl = toSafeExternalHttpUrl(paper.access.pdfUrl);
               return (
                 <TableRow key={paper.id}>
-                  <TableCell>
+                  <TableCell className="px-3 py-2">
                     <div className="space-y-1">
-                      <p className="font-medium leading-tight">{paper.title}</p>
+                      <p className="text-sm font-medium leading-tight">{paper.title}</p>
                       {paper.doi ? <p className="text-xs text-muted-foreground">DOI: {paper.doi}</p> : null}
                       {paper.abstract ? (
                         <p className="line-clamp-2 text-xs text-muted-foreground">{paper.abstract}</p>
                       ) : null}
                     </div>
                   </TableCell>
-                  <TableCell>
-                    {paper.tier ? (
-                      <Badge variant="outline">{paper.tier}</Badge>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell>{paper.citationCount ?? "-"}</TableCell>
-                  <TableCell>{paper.year ?? "-"}</TableCell>
-                  <TableCell>
+                  <TableCell className="px-3 py-2 text-sm">{paper.citationCount ?? "-"}</TableCell>
+                  <TableCell className="px-3 py-2 text-sm">{paper.year ?? "-"}</TableCell>
+                  <TableCell className="px-3 py-2">
                     <div className="flex flex-wrap gap-2">
                       {paper.bookmarked ? <Badge>Bookmarked</Badge> : null}
                       {paper.inReadingList ? <Badge variant="secondary">Reading</Badge> : null}
                       {safePdfUrl || paper.access.oaStatus ? <Badge variant="outline">OA</Badge> : null}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="px-3 py-2 text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button size="icon" variant="ghost">
+                        <Button size="icon" variant="ghost" className="size-8">
                           <MoreHorizontalIcon />
                         </Button>
                       </DropdownMenuTrigger>

@@ -7,8 +7,6 @@ import {
 
 export type RunStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
 
-export type RelevanceTier = "FOUNDATIONAL" | "DEPTH" | "BACKGROUND";
-
 export interface SessionUser {
   id: string;
   email: string;
@@ -49,7 +47,6 @@ export interface ScoredPaper {
   graphScore: number;
   citationScore: number;
   totalScore: number;
-  tier: RelevanceTier;
 }
 
 export interface Env {

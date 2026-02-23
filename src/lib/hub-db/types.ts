@@ -1,4 +1,4 @@
-import type { RelevanceTier, RunStatus } from "../types.js";
+import type { RunStatus } from "../types.js";
 
 export interface ProjectListRow {
   id: string;
@@ -30,7 +30,6 @@ export interface ProjectPaperRow {
   score_graph: number | null;
   score_citation: number | null;
   score_total: number | null;
-  tier: RelevanceTier | null;
   pdf_url: string | null;
   oa_status: string | null;
   license: string | null;
@@ -64,7 +63,6 @@ export interface ProjectContext {
     year: number | null;
     doi: string | null;
     scoreTotal: number | null;
-    tier: RelevanceTier | null;
     bookmarked: boolean;
     inReadingList: boolean;
   }>;

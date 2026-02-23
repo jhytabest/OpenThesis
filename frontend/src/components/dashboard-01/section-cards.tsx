@@ -44,17 +44,17 @@ export function SectionCards({ dashboard }: SectionCardsProps) {
   ];
 
   return (
-    <div className="@xl/main:grid-cols-2 @5xl/main:grid-cols-4 grid grid-cols-1 gap-4 px-4 lg:px-6">
+    <div className="@xl/main:grid-cols-2 @5xl/main:grid-cols-4 grid grid-cols-1 gap-3 px-3 md:px-4 lg:px-5">
       {items.map((item) => (
         <Card key={item.title} className="@container/card">
-          <CardHeader className="pb-2">
+          <CardHeader className="space-y-1 pb-1">
             <CardDescription className="flex items-center justify-between gap-2">
               <span>{item.title}</span>
               <item.icon className="size-4 text-muted-foreground" />
             </CardDescription>
-            <CardTitle className="text-2xl font-semibold tabular-nums">{item.value}</CardTitle>
+            <CardTitle className="text-xl font-semibold tabular-nums">{item.value}</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-0">
             <p className="text-xs text-muted-foreground">{item.description}</p>
           </CardContent>
         </Card>

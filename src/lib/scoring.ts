@@ -1,4 +1,4 @@
-import type { PaperCitation, RelevanceTier, ScoredPaper } from "./types.js";
+import type { PaperCitation, ScoredPaper } from "./types.js";
 
 const tokenize = (value: string): string[] =>
   value
@@ -53,16 +53,6 @@ export function graphScore(
   return connected ? 0.35 : 0.1;
 }
 
-export function tierForScore(totalScore: number, citation: number, graph: number): RelevanceTier {
-  if (citation >= 0.65 && graph >= 0.6 && totalScore >= 0.6) {
-    return "FOUNDATIONAL";
-  }
-  if (totalScore >= 0.45) {
-    return "DEPTH";
-  }
-  return "BACKGROUND";
-}
-
 export function scorePaper(input: {
   thesisText: string;
   title: string;
@@ -80,7 +70,6 @@ export function scorePaper(input: {
     lexicalScore: Number(lexical.toFixed(4)),
     graphScore: Number(graph.toFixed(4)),
     citationScore: Number(citation.toFixed(4)),
-    totalScore: Number(total.toFixed(4)),
-    tier: tierForScore(total, citation, graph)
+    totalScore: Number(total.toFixed(4))
   };
 }

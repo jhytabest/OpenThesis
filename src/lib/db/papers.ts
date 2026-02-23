@@ -1,4 +1,4 @@
-import type { RelevanceTier, RunStatus } from "../types.js";
+import type { RunStatus } from "../types.js";
 import { all, first, nowIso, run } from "./base.js";
 
 export const papersRepo = {
@@ -144,26 +144,23 @@ export const papersRepo = {
     graphScore: number;
     citationScore: number;
     totalScore: number;
-    tier: RelevanceTier;
   }): Promise<void> {
     await run(
       db,
       `INSERT INTO run_papers (
-         run_id, paper_id, lexical_score, graph_score, citation_score, total_score, tier
-       ) VALUES (?, ?, ?, ?, ?, ?, ?)
+         run_id, paper_id, lexical_score, graph_score, citation_score, total_score
+       ) VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(run_id, paper_id) DO UPDATE SET
          lexical_score=excluded.lexical_score,
          graph_score=excluded.graph_score,
          citation_score=excluded.citation_score,
-         total_score=excluded.total_score,
-         tier=excluded.tier`,
+         total_score=excluded.total_score`,
       input.runId,
       input.paperId,
       input.lexicalScore,
       input.graphScore,
       input.citationScore,
-      input.totalScore,
-      input.tier
+      input.totalScore
     );
   },
 

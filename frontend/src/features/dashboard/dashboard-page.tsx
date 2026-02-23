@@ -49,7 +49,7 @@ export function DashboardPage({ projectId }: DashboardPageProps) {
 
   if (loading && !dashboard) {
     return (
-      <div className="px-4 py-4 lg:px-6">
+      <div className="px-3 py-3 md:px-4 lg:px-5">
         <Card>
           <CardContent className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
             <Loader2Icon className="size-4 animate-spin" />
@@ -65,9 +65,9 @@ export function DashboardPage({ projectId }: DashboardPageProps) {
   }
 
   return (
-    <div className="space-y-3">
-      <div className="px-4 pt-4 lg:px-6">
-        <Button onClick={handleStartRun} disabled={startingRun}>
+    <div className="space-y-2">
+      <div className="px-3 pt-3 md:px-4 lg:px-5">
+        <Button size="sm" onClick={handleStartRun} disabled={startingRun}>
           {startingRun ? <Loader2Icon className="animate-spin" /> : <PlayIcon />}
           Start new run
         </Button>

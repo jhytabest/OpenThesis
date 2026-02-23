@@ -28,20 +28,22 @@ const chartConfig = {
 
 export function ChartAreaInteractive({ dashboard }: ChartAreaInteractiveProps) {
   const data = [
-    { bucket: "Foundational", count: dashboard.stats.foundational },
-    { bucket: "Depth", count: dashboard.stats.depth },
-    { bucket: "Background", count: dashboard.stats.background },
+    { bucket: "Papers", count: dashboard.stats.papers },
     { bucket: "Open Access", count: dashboard.stats.openAccess },
+    { bucket: "Reading", count: dashboard.stats.readingList },
+    { bucket: "Bookmarked", count: dashboard.stats.bookmarked },
+    { bucket: "Chats", count: dashboard.stats.chats },
+    { bucket: "Memory Docs", count: dashboard.stats.memoryDocs },
   ];
 
   return (
     <Card className="@container/card">
-      <CardHeader>
-        <CardTitle>Paper Distribution</CardTitle>
-        <CardDescription>Current project coverage by tier and access</CardDescription>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Project Activity</CardTitle>
+        <CardDescription>Compact snapshot of paper and workspace metrics</CardDescription>
       </CardHeader>
-      <CardContent>
-        <ChartContainer config={chartConfig} className="aspect-auto h-[260px] w-full">
+      <CardContent className="pt-0">
+        <ChartContainer config={chartConfig} className="aspect-auto h-[220px] w-full">
           <BarChart data={data}>
             <CartesianGrid vertical={false} />
             <XAxis dataKey="bucket" tickLine={false} axisLine={false} tickMargin={8} />

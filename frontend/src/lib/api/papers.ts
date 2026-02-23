@@ -6,7 +6,6 @@ import type {
   CreateProjectPaperResponse,
   ListProjectPaperCommentsResponse,
   ListProjectPapersResponse,
-  RelevanceTier,
   UpdateProjectPaperRequest,
   UpdateProjectPaperResponse,
 } from "@/lib/api/contracts";
@@ -14,7 +13,6 @@ import type {
 export interface ListPapersParams {
   query?: string;
   sort?: "relevance" | "recent" | "citations" | "newest";
-  tier?: RelevanceTier;
   oaOnly?: boolean;
   bookmarkedOnly?: boolean;
   readingOnly?: boolean;
@@ -28,7 +26,6 @@ export const papersApi = {
     const path = withQuery(`/api/projects/${projectId}/papers`, {
       query: params?.query,
       sort: params?.sort,
-      tier: params?.tier,
       oaOnly: params?.oaOnly,
       bookmarkedOnly: params?.bookmarkedOnly,
       readingOnly: params?.readingOnly,

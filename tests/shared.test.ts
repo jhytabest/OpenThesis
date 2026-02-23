@@ -45,7 +45,6 @@ test("mapProjectPaperResponse maps paper row and parses JSON fields", () => {
     score_graph: 0.6,
     score_citation: 0.5,
     score_total: 0.62,
-    tier: "FOUNDATIONAL",
     pdf_url: "https://example.com/paper.pdf",
     oa_status: "gold",
     license: "cc-by",

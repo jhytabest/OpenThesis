@@ -26,7 +26,6 @@ const projectContext: ProjectContext = {
       year: 2022,
       doi: null,
       scoreTotal: 0.6,
-      tier: "FOUNDATIONAL",
       bookmarked: false,
       inReadingList: true
     }

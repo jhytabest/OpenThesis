@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   ApiError,
   memoryApi,
@@ -105,36 +106,38 @@ export function MemoryPage({ projectId }: MemoryPageProps) {
   };
 
   return (
-    <div className="grid h-[calc(100svh-9rem)] gap-4 px-4 py-4 lg:grid-cols-[280px_1fr] lg:px-6">
+    <div className="grid h-[calc(100svh-8rem)] gap-3 px-3 py-3 md:px-4 lg:grid-cols-[260px_1fr] lg:px-5">
       <Card className="min-h-0">
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-1">
           <CardTitle className="text-base">Memory Docs</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 overflow-auto">
           {loading ? <p className="text-sm text-muted-foreground">Loading...</p> : null}
           {docs.map((doc) => (
-            <button
+            <Button
               key={doc.id}
               type="button"
+              variant={doc.key === selectedKey ? "secondary" : "ghost"}
               onClick={() => setSelectedKey(doc.key)}
-              className={`w-full rounded-md border p-2 text-left text-sm ${
-                doc.key === selectedKey ? "bg-accent" : "hover:bg-accent"
-              }`}
+              className="h-auto w-full justify-start border px-2.5 py-2 text-left"
             >
-              <p className="truncate font-medium">{doc.title}</p>
-              <p className="truncate text-xs text-muted-foreground">{doc.key}</p>
-            </button>
+              <div className="w-full">
+                <p className="truncate font-medium">{doc.title}</p>
+                <p className="truncate text-xs text-muted-foreground">{doc.key}</p>
+              </div>
+            </Button>
           ))}
 
           <div className="space-y-2 border-t pt-2">
             <Label htmlFor="new-doc-key">New doc key</Label>
             <Input
               id="new-doc-key"
+              className="h-9"
               value={newDocKey}
               onChange={(event) => setNewDocKey(event.target.value)}
               placeholder="e.g. next_steps"
             />
-            <Button onClick={() => void handleCreateDoc()} disabled={saving || !newDocKey.trim()}>
+            <Button size="sm" onClick={() => void handleCreateDoc()} disabled={saving || !newDocKey.trim()}>
               Create doc
             </Button>
           </div>
@@ -142,32 +145,33 @@ export function MemoryPage({ projectId }: MemoryPageProps) {
       </Card>
 
       <Card className="flex min-h-0 flex-col">
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-1">
           <CardTitle className="text-base">Editor</CardTitle>
         </CardHeader>
         <CardContent className="flex min-h-0 flex-1 flex-col gap-3">
           {selectedDoc ? (
             <>
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="space-y-2">
+              <div className="grid gap-2 md:grid-cols-2">
+                <div className="space-y-1.5">
                   <Label htmlFor="doc-title">Title</Label>
                   <Input
                     id="doc-title"
+                    className="h-9"
                     value={draftTitle}
                     onChange={(event) => setDraftTitle(event.target.value)}
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label htmlFor="doc-key">Key</Label>
-                  <Input id="doc-key" value={selectedDoc.key} readOnly />
+                  <Input id="doc-key" className="h-9" value={selectedDoc.key} readOnly />
                 </div>
               </div>
 
-              <div className="flex min-h-0 flex-1 flex-col gap-2">
+              <div className="flex min-h-0 flex-1 flex-col gap-1.5">
                 <Label htmlFor="doc-content">Content</Label>
-                <textarea
+                <Textarea
                   id="doc-content"
-                  className="min-h-0 flex-1 rounded-md border bg-background px-3 py-2 text-sm"
+                  className="min-h-0 flex-1"
                   value={draftContent}
                   onChange={(event) => setDraftContent(event.target.value)}
                 />
@@ -175,6 +179,7 @@ export function MemoryPage({ projectId }: MemoryPageProps) {
 
               <div>
                 <Button
+                  size="sm"
                   onClick={() => void saveDoc(selectedDoc.key, draftTitle, draftContent)}
                   disabled={saving}
                 >

@@ -368,7 +368,6 @@ export async function processRun(env: Env, runId: string): Promise<void> {
       openalexId: string;
       title: string;
       totalScore: number;
-      tier: string;
     }> = [];
 
     for (const paper of allPapers) {
@@ -388,15 +387,13 @@ export async function processRun(env: Env, runId: string): Promise<void> {
         lexicalScore: scored.lexicalScore,
         graphScore: scored.graphScore,
         citationScore: scored.citationScore,
-        totalScore: scored.totalScore,
-        tier: scored.tier
+        totalScore: scored.totalScore
       });
 
       scoredSummary.push({
         openalexId: paper.openalexId,
         title: paper.title,
-        totalScore: scored.totalScore,
-        tier: scored.tier
+        totalScore: scored.totalScore
       });
     }
 
@@ -448,14 +445,14 @@ export async function processRun(env: Env, runId: string): Promise<void> {
     const topFindings = [...scoredSummary]
       .sort((left, right) => right.totalScore - left.totalScore)
       .slice(0, 10)
-      .map((paper, index) => `${index + 1}. ${paper.title} (${paper.tier.toLowerCase()})`);
+      .map((paper, index) => `${index + 1}. ${paper.title}`);
     await HubDb.upsertProjectMemoryDoc(env.ALEXCLAW_DB, {
       projectId: run.thesis_id,
       key: "latest_findings",
       title: "Latest findings",
       content:
         topFindings.length > 0
-          ? `Top papers from the latest background run:\n${topFindings.join("\n")}`
+          ? `Top papers from the latest run:\n${topFindings.join("\n")}`
           : "No papers were selected in the latest run.",
       source: "system"
     });

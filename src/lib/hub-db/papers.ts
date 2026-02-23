@@ -1,4 +1,3 @@
-import type { RelevanceTier } from "../types.js";
 import { all, first, normalizeBool, nowIso, run, runChanges, safeJsonParse } from "./base.js";
 import type { ProjectPaperRow } from "./types.js";
 
@@ -8,7 +7,6 @@ export const papersRepo = {
     userId: string;
     query?: string;
     sort?: "relevance" | "recent" | "citations" | "newest";
-    tier?: RelevanceTier;
     oaOnly?: boolean;
     bookmarkedOnly?: boolean;
     readingOnly?: boolean;
@@ -28,11 +26,6 @@ export const papersRepo = {
       const like = `%${query}%`;
       filters.push("(lower(pp.title) LIKE ? OR lower(COALESCE(pp.abstract, '')) LIKE ? OR lower(COALESCE(pp.doi, '')) LIKE ?)");
       params.push(like, like, like);
-    }
-
-    if (input.tier) {
-      filters.push("pp.tier = ?");
-      params.push(input.tier);
     }
 
     if (input.oaOnly) {
@@ -124,7 +117,6 @@ export const papersRepo = {
          score_graph,
          score_citation,
          score_total,
-         tier,
          pdf_url,
          oa_status,
          license,
@@ -370,7 +362,6 @@ export const papersRepo = {
          score_graph,
          score_citation,
          score_total,
-         tier,
          pdf_url,
          oa_status,
          license,
@@ -399,7 +390,6 @@ export const papersRepo = {
          rp.graph_score,
          rp.citation_score,
          rp.total_score,
-         rp.tier,
          pa.pdf_url,
          pa.oa_status,
          pa.license,
@@ -429,7 +419,6 @@ export const papersRepo = {
          score_graph = excluded.score_graph,
          score_citation = excluded.score_citation,
          score_total = excluded.score_total,
-         tier = excluded.tier,
          pdf_url = COALESCE(excluded.pdf_url, project_papers.pdf_url),
          oa_status = COALESCE(excluded.oa_status, project_papers.oa_status),
          license = COALESCE(excluded.license, project_papers.license),

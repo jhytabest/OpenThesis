@@ -1,5 +1,4 @@
 export type RunStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
-export type RelevanceTier = "FOUNDATIONAL" | "DEPTH" | "BACKGROUND";
 
 export interface SessionUser {
   id: string;
@@ -104,9 +103,6 @@ export interface ProjectDashboard {
   };
   stats: {
     papers: number;
-    foundational: number;
-    depth: number;
-    background: number;
     openAccess: number;
     readingList: number;
     bookmarked: number;
@@ -143,7 +139,6 @@ export interface ProjectPaper {
     citation: number | null;
     total: number | null;
   };
-  tier: RelevanceTier | null;
   access: {
     pdfUrl: string | null;
     oaStatus: string | null;

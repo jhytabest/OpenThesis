@@ -18,9 +18,6 @@ export const dashboardRepo = {
     };
     stats: {
       papers: number;
-      foundational: number;
-      depth: number;
-      background: number;
       openAccess: number;
       readingList: number;
       bookmarked: number;
@@ -42,9 +39,6 @@ export const dashboardRepo = {
     const [statsRow, summaryDoc, progressDoc, latestRun] = await Promise.all([
       first<{
         papers: number;
-        foundational: number;
-        depth: number;
-        background: number;
         open_access: number;
         reading_list: number;
         bookmarked: number;
@@ -53,9 +47,6 @@ export const dashboardRepo = {
         db,
         `SELECT
            paper_count AS papers,
-           foundational_count AS foundational,
-           depth_count AS depth,
-           background_count AS background,
            open_access_count AS open_access,
            reading_count AS reading_list,
            bookmarked_count AS bookmarked,
@@ -102,9 +93,6 @@ export const dashboardRepo = {
       },
       stats: {
         papers: Number(statsRow?.papers ?? 0),
-        foundational: Number(statsRow?.foundational ?? 0),
-        depth: Number(statsRow?.depth ?? 0),
-        background: Number(statsRow?.background ?? 0),
         openAccess: Number(statsRow?.open_access ?? 0),
         readingList: Number(statsRow?.reading_list ?? 0),
         bookmarked: Number(statsRow?.bookmarked ?? 0),
@@ -141,7 +129,6 @@ export const dashboardRepo = {
         year: number | null;
         doi: string | null;
         score_total: number | null;
-        tier: "FOUNDATIONAL" | "DEPTH" | "BACKGROUND" | null;
         bookmarked: number;
         in_reading_list: number;
       }>(
@@ -153,7 +140,6 @@ export const dashboardRepo = {
            pp.year,
            pp.doi,
            pp.score_total,
-           pp.tier,
            pp.bookmarked,
            pp.in_reading_list
          FROM project_papers pp
@@ -190,7 +176,6 @@ export const dashboardRepo = {
         year: paper.year,
         doi: paper.doi,
         scoreTotal: paper.score_total,
-        tier: paper.tier,
         bookmarked: paper.bookmarked === 1,
         inReadingList: paper.in_reading_list === 1
       }))

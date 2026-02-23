@@ -6,7 +6,6 @@ import {
   ApiError,
   papersApi,
   type ProjectPaper,
-  type RelevanceTier,
 } from "@/lib/api";
 
 interface PapersPageProps {
@@ -19,7 +18,6 @@ export function PapersPage({ projectId }: PapersPageProps) {
 
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<"relevance" | "recent" | "citations" | "newest">("relevance");
-  const [tier, setTier] = useState<RelevanceTier | "ALL">("ALL");
   const [oaOnly, setOaOnly] = useState(false);
   const [bookmarkedOnly, setBookmarkedOnly] = useState(false);
   const [readingOnly, setReadingOnly] = useState(false);
@@ -30,7 +28,6 @@ export function PapersPage({ projectId }: PapersPageProps) {
       const response = await papersApi.list(projectId, {
         query: query.trim() || undefined,
         sort,
-        tier: tier === "ALL" ? undefined : tier,
         oaOnly,
         bookmarkedOnly,
         readingOnly,
@@ -42,7 +39,7 @@ export function PapersPage({ projectId }: PapersPageProps) {
     } finally {
       setLoading(false);
     }
-  }, [projectId, query, sort, tier, oaOnly, bookmarkedOnly, readingOnly]);
+  }, [projectId, query, sort, oaOnly, bookmarkedOnly, readingOnly]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -79,19 +76,17 @@ export function PapersPage({ projectId }: PapersPageProps) {
   };
 
   return (
-    <div className="py-4">
+    <div className="py-3">
       <DataTable
         papers={papers}
         loading={loading}
         query={query}
         sort={sort}
-        tier={tier}
         oaOnly={oaOnly}
         bookmarkedOnly={bookmarkedOnly}
         readingOnly={readingOnly}
         onQueryChange={setQuery}
         onSortChange={setSort}
-        onTierChange={setTier}
         onOaOnlyChange={setOaOnly}
         onBookmarkedOnlyChange={setBookmarkedOnly}
         onReadingOnlyChange={setReadingOnly}

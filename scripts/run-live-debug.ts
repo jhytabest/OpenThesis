@@ -640,7 +640,6 @@ const executeLiveFlow = async (input: {
       title: paper.title,
       year: paper.year,
       citationCount: paper.citationCount,
-      tier: paper.score.tier,
       totalScore: paper.score.totalScore,
       doi: paper.doi
     })),

@@ -138,9 +138,9 @@ export function ChatsPage({ projectId, routeChatId, onOpenChat }: ChatsPageProps
   };
 
   return (
-    <div className="grid h-[calc(100svh-9rem)] gap-4 px-4 py-4 lg:grid-cols-[280px_1fr] lg:px-6">
+    <div className="grid h-[calc(100svh-8rem)] gap-3 px-3 py-3 md:px-4 lg:grid-cols-[260px_1fr] lg:px-5">
       <Card className="min-h-0">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1">
           <CardTitle className="text-base">Chats</CardTitle>
           <Button size="sm" variant="outline" onClick={handleCreateChat} disabled={creatingChat}>
             {creatingChat ? <Loader2Icon className="animate-spin" /> : <PlusCircleIcon />}
@@ -151,17 +151,18 @@ export function ChatsPage({ projectId, routeChatId, onOpenChat }: ChatsPageProps
           {loadingChats ? <p className="text-sm text-muted-foreground">Loading chats...</p> : null}
           {chats.map((chat) => (
             <div key={chat.id} className="flex items-center gap-2">
-              <button
+              <Button
                 type="button"
+                variant={chat.id === activeChatId ? "secondary" : "ghost"}
                 onClick={() => onOpenChat(chat.id)}
-                className={`flex-1 rounded-md border p-2 text-left text-sm ${
-                  chat.id === activeChatId ? "bg-accent" : "hover:bg-accent"
-                }`}
+                className="h-auto flex-1 justify-start border px-2.5 py-2 text-left"
               >
-                <p className="truncate font-medium">{chat.title}</p>
-                <p className="text-xs text-muted-foreground">{chat.messageCount} messages</p>
-              </button>
-              <Button size="icon" variant="ghost" onClick={() => void handleDeleteChat(chat.id)}>
+                <div className="w-full">
+                  <p className="truncate font-medium">{chat.title}</p>
+                  <p className="text-xs text-muted-foreground">{chat.messageCount} messages</p>
+                </div>
+              </Button>
+              <Button size="icon" variant="ghost" className="size-8" onClick={() => void handleDeleteChat(chat.id)}>
                 <Trash2Icon className="size-4" />
               </Button>
             </div>
@@ -173,11 +174,11 @@ export function ChatsPage({ projectId, routeChatId, onOpenChat }: ChatsPageProps
       </Card>
 
       <Card className="flex min-h-0 flex-col">
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-1">
           <CardTitle className="text-base">Conversation</CardTitle>
         </CardHeader>
-        <CardContent className="flex min-h-0 flex-1 flex-col gap-3">
-          <div className="min-h-0 flex-1 space-y-3 overflow-auto rounded-md border p-3">
+        <CardContent className="flex min-h-0 flex-1 flex-col gap-2">
+          <div className="min-h-0 flex-1 space-y-2 overflow-auto rounded-md border p-2.5">
             {loadingMessages ? <p className="text-sm text-muted-foreground">Loading messages...</p> : null}
             {!loadingMessages && messages.length === 0 ? (
               <p className="text-sm text-muted-foreground">No messages yet.</p>
@@ -185,7 +186,7 @@ export function ChatsPage({ projectId, routeChatId, onOpenChat }: ChatsPageProps
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
-                  className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                  className={`max-w-[82%] rounded-lg px-2.5 py-1.5 text-sm ${
                     message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
                   }`}
                 >
@@ -197,6 +198,7 @@ export function ChatsPage({ projectId, routeChatId, onOpenChat }: ChatsPageProps
 
           <div className="flex gap-2">
             <Input
+              className="h-9"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               placeholder={activeChatId ? "Type your message" : "Create a chat first"}
@@ -208,7 +210,7 @@ export function ChatsPage({ projectId, routeChatId, onOpenChat }: ChatsPageProps
               }}
               disabled={!activeChatId || sending}
             />
-            <Button onClick={() => void handleSend()} disabled={!activeChatId || sending || !draft.trim()}>
+            <Button size="sm" onClick={() => void handleSend()} disabled={!activeChatId || sending || !draft.trim()}>
               {sending ? <Loader2Icon className="animate-spin" /> : <SendIcon />}
               Send
             </Button>

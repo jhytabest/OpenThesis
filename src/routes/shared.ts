@@ -121,7 +121,6 @@ export const mapProjectPaperResponse = (paper: ProjectPaperRow) => ({
     citation: paper.score_citation,
     total: paper.score_total
   },
-  tier: paper.tier,
   access: {
     pdfUrl: sanitizeHttpUrl(paper.pdf_url),
     oaStatus: paper.oa_status,

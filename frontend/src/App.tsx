@@ -3,7 +3,16 @@ import { Loader2Icon } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
 import { AppShell } from "@/app/app-shell";
-import { buildProjectPath, navigate, parseRoute, subscribeNavigation } from "@/app/router";
+import {
+  SITE_PAGE_META,
+  buildProjectPath,
+  buildSitePath,
+  navigate,
+  parseRoute,
+  routeRequiresAuth,
+  subscribeNavigation,
+  type SitePageKey,
+} from "@/app/router";
 import { Login01Page } from "@/components/login-01-page";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -35,12 +44,87 @@ const MemoryPage = lazy(async () => {
   const module = await import("@/features/memory/memory-page");
   return { default: module.MemoryPage };
 });
+const SitePages = lazy(async () => {
+  const module = await import("@/features/site/site-pages");
+  return { default: module.SitePages };
+});
 
 const RouteLoading = () => (
   <div className="flex min-h-[40vh] items-center justify-center">
     <Loader2Icon className="size-5 animate-spin" />
   </div>
 );
+
+const PUBLIC_NAV_LINKS: Array<{ label: string; page: SitePageKey }> = [
+  { label: "About", page: "about" },
+  { label: "Pricing", page: "pricing" },
+  { label: "Help", page: "help" },
+  { label: "Support", page: "support" },
+  { label: "Status", page: "status" },
+];
+
+const LEGAL_NAV_LINKS: Array<{ label: string; page: SitePageKey }> = [
+  { label: "Privacy", page: "privacy" },
+  { label: "Terms", page: "terms" },
+  { label: "Cookies", page: "cookies" },
+  { label: "Subprocessors", page: "subprocessors" },
+  { label: "Compliance", page: "compliance" },
+];
+
+function PublicShell({
+  user,
+  children,
+}: {
+  user: SessionUser | null;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-h-svh bg-muted/20">
+      <header className="border-b bg-background">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-3 py-2 md:px-4">
+          <Button variant="ghost" className="h-8 px-2 font-semibold" onClick={() => navigate(buildSitePath("about"))}>
+            Alexclaw
+          </Button>
+          <div className="flex flex-wrap items-center gap-1">
+            {PUBLIC_NAV_LINKS.map((link) => (
+              <Button
+                key={link.page}
+                size="sm"
+                variant="ghost"
+                className="h-8 px-2"
+                onClick={() => navigate(buildSitePath(link.page))}
+              >
+                {link.label}
+              </Button>
+            ))}
+          </div>
+          <Button
+            size="sm"
+            onClick={() => navigate(user ? "/projects" : "/login")}
+          >
+            {user ? "Open workspace" : "Sign in"}
+          </Button>
+        </div>
+      </header>
+      <main className="mx-auto max-w-6xl">{children}</main>
+      <footer className="mx-auto max-w-6xl px-3 pb-4 pt-2 md:px-4">
+        <div className="flex flex-wrap gap-1">
+          {LEGAL_NAV_LINKS.map((link) => (
+            <Button
+              key={link.page}
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs"
+              onClick={() => navigate(buildSitePath(link.page))}
+            >
+              {link.label}
+            </Button>
+          ))}
+        </div>
+      </footer>
+    </div>
+  );
+}
 
 export default function App() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
@@ -110,10 +194,10 @@ export default function App() {
     if (authLoading) {
       return;
     }
-    if (!user && route.page !== "login") {
+    if (!user && routeRequiresAuth(route)) {
       navigate("/login", true);
     }
-  }, [authLoading, route.page, user]);
+  }, [authLoading, route, user]);
 
   useEffect(() => {
     if (authLoading || !user) {
@@ -160,7 +244,7 @@ export default function App() {
     );
   }
 
-  if (!user) {
+  if (!user && route.page === "login") {
     return (
       <>
         <Login01Page errorMessage={authError} />
@@ -169,8 +253,40 @@ export default function App() {
     );
   }
 
-  if (route.page === "login" || route.page === "home") {
+  if (!user && routeRequiresAuth(route)) {
     return <RouteLoading />;
+  }
+
+  if (user && (route.page === "login" || route.page === "home")) {
+    return <RouteLoading />;
+  }
+
+  const publicContent = (() => {
+    if (route.page === "home") {
+      return <SitePages page="about" user={user} onNavigate={(path) => navigate(path)} />;
+    }
+    if (route.page === "site") {
+      return <SitePages page={route.site} user={user} onNavigate={(path) => navigate(path)} />;
+    }
+    return (
+      <div className="px-3 py-3 md:px-4">
+        <Card>
+          <CardContent className="space-y-3 py-6">
+            <p className="text-sm text-muted-foreground">This page does not exist.</p>
+            <Button size="sm" onClick={() => navigate(buildSitePath("about"))}>Back to about</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  })();
+
+  if (!user) {
+    return (
+      <>
+        <PublicShell user={user}>{publicContent}</PublicShell>
+        <Toaster richColors position="top-right" />
+      </>
+    );
   }
 
   const header =
@@ -186,7 +302,12 @@ export default function App() {
               "Untitled project",
             subtitle: `Project ${route.projectId.slice(0, 8)}`,
           }
-        : {
+      : route.page === "site"
+        ? {
+            title: SITE_PAGE_META[route.site].title,
+            subtitle: SITE_PAGE_META[route.site].subtitle,
+          }
+      : {
             title: "Not found",
           };
 
@@ -224,6 +345,10 @@ export default function App() {
       }
     }
 
+    if (route.page === "site") {
+      return <SitePages page={route.site} user={user} onNavigate={(path) => navigate(path)} />;
+    }
+
     return (
       <div className="p-4 lg:p-6">
         <Card>
@@ -243,6 +368,7 @@ export default function App() {
         projects={projects}
         currentProjectId={route.page === "project" ? route.projectId : undefined}
         currentSection={route.page === "project" ? route.section : undefined}
+        currentSitePage={route.page === "site" ? route.site : undefined}
         title={header.title}
         subtitle={header.subtitle}
         onNavigate={(path) => navigate(path)}

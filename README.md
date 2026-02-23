@@ -16,7 +16,7 @@ Production-oriented MVP for thesis-to-paper-graph using:
   - OpenAI Responses API strict-JSON steps
   - OpenAlex search (Semantic Scholar fallback on OpenAlex quota/rate exhaustion)
   - OpenAlex canonicalization + one-generation graph expansion
-  - Relevance scoring + tiering
+  - Relevance scoring and ranking
   - Asynchronous Unpaywall PDF enrichment via queue
 - Traceable run evidence and step audit trail
 - Minimal UI to inspect papers/authors

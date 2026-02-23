@@ -28,10 +28,6 @@ export function registerProjectPaperRoutes(app: App): void {
     const sort = sortRaw === "recent" || sortRaw === "citations" || sortRaw === "newest"
       ? sortRaw
       : "relevance";
-    const tierRaw = c.req.query("tier");
-    const tier = tierRaw === "FOUNDATIONAL" || tierRaw === "DEPTH" || tierRaw === "BACKGROUND"
-      ? tierRaw
-      : undefined;
     const limitParsed = Number(c.req.query("limit") ?? 200);
     const limit = Number.isFinite(limitParsed) ? limitParsed : 200;
     const offsetParsed = Number(c.req.query("offset") ?? 0);
@@ -42,7 +38,6 @@ export function registerProjectPaperRoutes(app: App): void {
       userId: user.id,
       query: c.req.query("query"),
       sort,
-      tier,
       oaOnly: queryBool(c.req.query("oaOnly")),
       bookmarkedOnly: queryBool(c.req.query("bookmarkedOnly")),
       readingOnly: queryBool(c.req.query("readingOnly")),

@@ -2,13 +2,14 @@ import { AppSidebar } from "@/components/dashboard-01/app-sidebar";
 import { SiteHeader } from "@/components/dashboard-01/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import type { ProjectListItem, SessionUser } from "@/lib/api";
-import type { ProjectSection } from "@/app/router";
+import type { ProjectSection, SitePageKey } from "@/app/router";
 
 interface AppShellProps {
   user: SessionUser;
   projects: ProjectListItem[];
   currentProjectId?: string;
   currentSection?: ProjectSection;
+  currentSitePage?: SitePageKey;
   title: string;
   subtitle?: string;
   onNavigate: (path: string) => void;
@@ -21,6 +22,7 @@ export function AppShell({
   projects,
   currentProjectId,
   currentSection,
+  currentSitePage,
   title,
   subtitle,
   onNavigate,
@@ -35,6 +37,7 @@ export function AppShell({
         projects={projects}
         currentProjectId={currentProjectId}
         currentSection={currentSection}
+        currentSitePage={currentSitePage}
         onNavigate={onNavigate}
         onLogout={onLogout}
       />

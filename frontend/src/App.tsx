@@ -1,27 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Button,
-  ButtonSet,
-  Column,
-  Content,
-  Grid,
-  Header,
-  HeaderGlobalAction,
-  HeaderGlobalBar,
-  HeaderName,
-  InlineLoading,
-  InlineNotification,
-  Layer,
-  Loading,
-  Modal,
-  Stack,
-  TextInput,
-  Theme,
-  Tile
-} from "@carbon/react";
-import { Add, Chat, Logout, Renew } from "@carbon/icons-react";
+import { Loader2, LogOut, MessageSquare, Plus, RotateCw } from "lucide-react";
 
 import { ApiError, apiRequest } from "./api";
+import { Alert, AlertDescription, AlertTitle } from "./components/ui/alert";
+import { Button } from "./components/ui/button";
+import { Card, CardContent } from "./components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "./components/ui/dialog";
+import { Input } from "./components/ui/input";
+import { Separator } from "./components/ui/separator";
 import type {
   ExplorerFilters,
   ManualPaperForm,
@@ -939,10 +932,10 @@ export default function App() {
     if (activeView === "dashboard" || activeView === "explorer" || activeView === "reading") {
       return (
         <>
-          <Button kind="secondary" size="sm" onClick={() => void triggerRun(activeProject.id)}>
+          <Button size="sm" variant="secondary" onClick={() => void triggerRun(activeProject.id)}>
             Refresh suggestions
           </Button>
-          <Button kind="primary" size="sm" onClick={() => openCreateChat(activeProject.id)}>
+          <Button size="sm" onClick={() => openCreateChat(activeProject.id)}>
             New chat
           </Button>
         </>
@@ -952,19 +945,15 @@ export default function App() {
     if (activeView === "chat") {
       return (
         <>
-          <Button kind="secondary" size="sm" onClick={() => openCreateChat(activeProject.id)}>
+          <Button size="sm" variant="secondary" onClick={() => openCreateChat(activeProject.id)}>
             New chat
           </Button>
           {activeChat ? (
             <>
-              <Button kind="tertiary" size="sm" onClick={() => openRenameChat(activeProject.id, activeChat)}>
+              <Button size="sm" variant="outline" onClick={() => openRenameChat(activeProject.id, activeChat)}>
                 Rename chat
               </Button>
-              <Button
-                kind="danger--tertiary"
-                size="sm"
-                onClick={() => requestDeleteChat(activeProject.id, activeChat.id)}
-              >
+              <Button size="sm" variant="destructive" onClick={() => requestDeleteChat(activeProject.id, activeChat.id)}>
                 Delete chat
               </Button>
             </>
@@ -978,235 +967,283 @@ export default function App() {
 
   if (authState === "loading") {
     return (
-      <Theme theme="g10">
-        <Loading withOverlay description="Loading workspace" />
-      </Theme>
+      <main className="flex min-h-screen items-center justify-center">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span>Loading workspace...</span>
+        </div>
+      </main>
     );
   }
 
   if (authState === "guest") {
-    return (
-      <Theme theme="g10">
-        <GuestLanding />
-      </Theme>
-    );
+    return <GuestLanding />;
   }
 
+  const isErrorNotification = notification?.kind === "error";
+  const notificationClassName =
+    notification?.kind === "success"
+      ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+      : notification?.kind === "warning"
+        ? "border-amber-300 bg-amber-50 text-amber-900"
+        : notification?.kind === "info"
+          ? "border-sky-300 bg-sky-50 text-sky-900"
+          : undefined;
+
   return (
-    <Theme theme="g10">
-      <Header aria-label="Alexclaw Research Hub">
-        <HeaderName href="/" prefix="Alexclaw">
-          <img src="/brand/alexclaw-logo-64.png" alt="Alexclaw logo" width={24} height={24} /> Research Hub
-        </HeaderName>
-        <HeaderGlobalBar>
-          <HeaderGlobalAction
-            aria-label="Refresh suggestions"
-            onClick={() => {
-              if (activeProject) {
-                void triggerRun(activeProject.id);
-              }
-            }}
-          >
-            <Renew size={20} />
-          </HeaderGlobalAction>
-          <HeaderGlobalAction
-            aria-label="Create chat"
-            onClick={() => {
-              if (activeProject) {
-                openCreateChat(activeProject.id);
-              }
-            }}
-          >
-            <Chat size={20} />
-          </HeaderGlobalAction>
-          <HeaderGlobalAction
-            aria-label="Create project"
-            onClick={() => {
-              setActiveView("new-project");
-              setActiveChatId(null);
-            }}
-          >
-            <Add size={20} />
-          </HeaderGlobalAction>
-          <HeaderGlobalAction aria-label="Log out" onClick={() => void logout()}>
-            <Logout size={20} />
-          </HeaderGlobalAction>
-        </HeaderGlobalBar>
-      </Header>
+    <div className="min-h-screen bg-background">
+      <header className="border-b bg-background">
+        <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-3 px-4 py-3">
+          <a className="inline-flex items-center gap-2 text-sm font-semibold" href="/">
+            <img src="/brand/alexclaw-logo-64.png" alt="Alexclaw logo" width={24} height={24} /> Research Hub
+          </a>
+          <div className="flex items-center gap-2">
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label="Refresh suggestions"
+              onClick={() => {
+                if (activeProject) {
+                  void triggerRun(activeProject.id);
+                }
+              }}
+            >
+              <RotateCw className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label="Create chat"
+              onClick={() => {
+                if (activeProject) {
+                  openCreateChat(activeProject.id);
+                }
+              }}
+            >
+              <MessageSquare className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label="Create project"
+              onClick={() => {
+                setActiveView("new-project");
+                setActiveChatId(null);
+              }}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+            <Button size="icon" variant="ghost" aria-label="Log out" onClick={() => void logout()}>
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </header>
 
-      <Content id="main-content">
-        <Grid fullWidth>
-          <Column sm={4} md={8} lg={4} xlg={4} max={4}>
-            <Layer>
-              <ProjectSidebar
-                projects={projects}
-                chatsByProject={chatsByProject}
-                activeProjectId={activeProjectId}
-                activeView={activeView}
-                activeChatId={activeChatId}
-                userEmail={user?.email}
-                onCreateProject={() => {
-                  setActiveView("new-project");
-                  setActiveChatId(null);
-                }}
-                onSelectProject={(projectId) => {
-                  setActiveProjectId(projectId);
-                  if (activeView === "new-project") {
-                    setActiveView("dashboard");
-                  }
-                  void ensureChats(projectId, false);
-                }}
-                onSelectView={(view) => setActiveView(view)}
-                onSelectChat={(chatId) => {
-                  setActiveView("chat");
-                  setActiveChatId(chatId);
-                }}
-                onOpenCreateChat={(projectId) => openCreateChat(projectId)}
-                onLogout={() => void logout()}
-              />
-            </Layer>
-          </Column>
+      <main className="mx-auto w-full max-w-[1440px] p-4">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+          <aside>
+            <ProjectSidebar
+              projects={projects}
+              chatsByProject={chatsByProject}
+              activeProjectId={activeProjectId}
+              activeView={activeView}
+              activeChatId={activeChatId}
+              userEmail={user?.email}
+              onCreateProject={() => {
+                setActiveView("new-project");
+                setActiveChatId(null);
+              }}
+              onSelectProject={(projectId) => {
+                setActiveProjectId(projectId);
+                if (activeView === "new-project") {
+                  setActiveView("dashboard");
+                }
+                void ensureChats(projectId, false);
+              }}
+              onSelectView={(view) => setActiveView(view)}
+              onSelectChat={(chatId) => {
+                setActiveView("chat");
+                setActiveChatId(chatId);
+              }}
+              onOpenCreateChat={(projectId) => openCreateChat(projectId)}
+              onLogout={() => void logout()}
+            />
+          </aside>
 
-          <Column sm={4} md={8} lg={12} xlg={12} max={12}>
-            <Layer>
-              <Tile>
-                <Stack gap={6}>
-                  <Stack gap={4}>
-                    <h1 className="cds--type-productive-heading-05">{headerTitle}</h1>
-                    <p className="cds--type-body-01">{headerSubtitle}</p>
-                    {activeProject ? <ButtonSet>{renderMainActions()}</ButtonSet> : null}
-                  </Stack>
+          <section>
+            <Card>
+              <CardContent className="space-y-6 pt-6">
+                <div className="space-y-3">
+                  <h1 className="text-2xl font-semibold tracking-tight">{headerTitle}</h1>
+                  <p className="text-sm text-muted-foreground">{headerSubtitle}</p>
+                  {activeProject ? <div className="flex flex-wrap gap-2">{renderMainActions()}</div> : null}
+                </div>
 
-                  {notification ? (
-                    <InlineNotification
-                      lowContrast
-                      kind={notification.kind}
-                      title={notification.title}
-                      subtitle={notification.subtitle}
-                      onCloseButtonClick={() => setNotification(null)}
-                    />
-                  ) : null}
+                {notification ? (
+                  <Alert className={notificationClassName} variant={isErrorNotification ? "destructive" : "default"}>
+                    <AlertTitle>{notification.title}</AlertTitle>
+                    {notification.subtitle ? <AlertDescription>{notification.subtitle}</AlertDescription> : null}
+                    <Button className="mt-3" size="sm" variant="ghost" onClick={() => setNotification(null)}>
+                      Dismiss
+                    </Button>
+                  </Alert>
+                ) : null}
 
-                  {projectsLoading && projects.length > 0 ? (
-                    <InlineLoading description="Refreshing projects..." />
-                  ) : null}
+                {projectsLoading && projects.length > 0 ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Refreshing projects...</span>
+                  </div>
+                ) : null}
 
-                  {!activeProject || activeView === "new-project" ? (
-                    <NewProjectView
-                      newProjectTitle={newProjectTitle}
-                      newProjectThesis={newProjectThesis}
-                      creatingProject={creatingProject}
-                      onSetNewProjectTitle={setNewProjectTitle}
-                      onSetNewProjectThesis={setNewProjectThesis}
-                      onSubmitNewProject={submitNewProject}
-                    />
-                  ) : null}
+                {!activeProject || activeView === "new-project" ? (
+                  <NewProjectView
+                    newProjectTitle={newProjectTitle}
+                    newProjectThesis={newProjectThesis}
+                    creatingProject={creatingProject}
+                    onSetNewProjectTitle={setNewProjectTitle}
+                    onSetNewProjectThesis={setNewProjectThesis}
+                    onSubmitNewProject={submitNewProject}
+                  />
+                ) : null}
 
-                  {activeProject && activeView === "dashboard" ? (
-                    <DashboardView
-                      dashboardLoading={dashboardLoading}
-                      dashboard={dashboard}
-                      memoryDocs={memoryDocs}
-                      memoryDrafts={memoryDrafts}
-                      setMemoryDrafts={setMemoryDrafts}
-                      savingMemoryKey={savingMemoryKey}
-                      onSaveMemoryDoc={(docKey) => void saveMemoryDoc(activeProject.id, docKey)}
-                    />
-                  ) : null}
+                {activeProject && activeView === "dashboard" ? (
+                  <DashboardView
+                    dashboardLoading={dashboardLoading}
+                    dashboard={dashboard}
+                    memoryDocs={memoryDocs}
+                    memoryDrafts={memoryDrafts}
+                    setMemoryDrafts={setMemoryDrafts}
+                    savingMemoryKey={savingMemoryKey}
+                    onSaveMemoryDoc={(docKey) => void saveMemoryDoc(activeProject.id, docKey)}
+                  />
+                ) : null}
 
-                  {activeProject && activeView === "explorer" ? (
-                    <ExplorerView
-                      explorerFilters={explorerFilters}
-                      explorerDraftFilters={explorerDraftFilters}
-                      setExplorerDraftFilters={setExplorerDraftFilters}
-                      explorerLoading={explorerLoading}
-                      explorerPapers={explorerPapers}
-                      paperComments={paperComments}
-                      openComments={openComments}
-                      commentDrafts={commentDrafts}
-                      setCommentDrafts={setCommentDrafts}
-                      manualPaper={manualPaper}
-                      setManualPaper={setManualPaper}
-                      addingPaper={addingPaper}
-                      updatingPaperId={updatingPaperId}
-                      onApplyExplorerFilters={applyExplorerFilters}
-                      onSubmitManualPaper={submitManualPaper}
-                      onUpdatePaper={(paperId, patch) => void updatePaper(activeProject.id, paperId, patch)}
-                      onToggleComments={(paperId) => void toggleComments(activeProject.id, paperId)}
-                      onRequestDeletePaper={(paperId, sourceView) =>
-                        requestDeletePaper(activeProject.id, paperId, sourceView)
-                      }
-                      onSaveComment={(paperId) => void saveComment(activeProject.id, paperId)}
-                    />
-                  ) : null}
+                {activeProject && activeView === "explorer" ? (
+                  <ExplorerView
+                    explorerFilters={explorerFilters}
+                    explorerDraftFilters={explorerDraftFilters}
+                    setExplorerDraftFilters={setExplorerDraftFilters}
+                    explorerLoading={explorerLoading}
+                    explorerPapers={explorerPapers}
+                    paperComments={paperComments}
+                    openComments={openComments}
+                    commentDrafts={commentDrafts}
+                    setCommentDrafts={setCommentDrafts}
+                    manualPaper={manualPaper}
+                    setManualPaper={setManualPaper}
+                    addingPaper={addingPaper}
+                    updatingPaperId={updatingPaperId}
+                    onApplyExplorerFilters={applyExplorerFilters}
+                    onSubmitManualPaper={submitManualPaper}
+                    onUpdatePaper={(paperId, patch) => void updatePaper(activeProject.id, paperId, patch)}
+                    onToggleComments={(paperId) => void toggleComments(activeProject.id, paperId)}
+                    onRequestDeletePaper={(paperId, sourceView) =>
+                      requestDeletePaper(activeProject.id, paperId, sourceView)
+                    }
+                    onSaveComment={(paperId) => void saveComment(activeProject.id, paperId)}
+                  />
+                ) : null}
 
-                  {activeProject && activeView === "reading" ? (
-                    <ReadingView
-                      readingLoading={readingLoading}
-                      readingPapers={readingPapers}
-                      readingDrafts={readingDrafts}
-                      setReadingDrafts={setReadingDrafts}
-                      savingReadingPaperId={savingReadingPaperId}
-                      onSaveReadingEntry={(paperId) => void saveReadingEntry(activeProject.id, paperId)}
-                      onUpdatePaper={(paperId, patch) => void updatePaper(activeProject.id, paperId, patch)}
-                      onRequestDeletePaper={(paperId, sourceView) =>
-                        requestDeletePaper(activeProject.id, paperId, sourceView)
-                      }
-                    />
-                  ) : null}
+                {activeProject && activeView === "reading" ? (
+                  <ReadingView
+                    readingLoading={readingLoading}
+                    readingPapers={readingPapers}
+                    readingDrafts={readingDrafts}
+                    setReadingDrafts={setReadingDrafts}
+                    savingReadingPaperId={savingReadingPaperId}
+                    onSaveReadingEntry={(paperId) => void saveReadingEntry(activeProject.id, paperId)}
+                    onUpdatePaper={(paperId, patch) => void updatePaper(activeProject.id, paperId, patch)}
+                    onRequestDeletePaper={(paperId, sourceView) =>
+                      requestDeletePaper(activeProject.id, paperId, sourceView)
+                    }
+                  />
+                ) : null}
 
-                  {activeProject && activeView === "chat" ? (
-                    <ChatView
-                      activeChat={activeChat}
-                      chatLoading={chatLoading}
-                      chatMessages={chatMessages}
-                      chatInput={chatInput}
-                      sendingMessage={sendingMessage}
-                      onSetChatInput={setChatInput}
-                      onOpenCreateChat={() => openCreateChat(activeProject.id)}
-                      onSubmitChatMessage={submitChatMessage}
-                    />
-                  ) : null}
-                </Stack>
-              </Tile>
-            </Layer>
-          </Column>
-        </Grid>
+                {activeProject && activeView === "chat" ? (
+                  <ChatView
+                    activeChat={activeChat}
+                    chatLoading={chatLoading}
+                    chatMessages={chatMessages}
+                    chatInput={chatInput}
+                    sendingMessage={sendingMessage}
+                    onSetChatInput={setChatInput}
+                    onOpenCreateChat={() => openCreateChat(activeProject.id)}
+                    onSubmitChatMessage={submitChatMessage}
+                  />
+                ) : null}
+              </CardContent>
+            </Card>
+          </section>
+        </div>
+      </main>
 
-        <Modal
-          open={chatModal !== null}
-          modalHeading={chatModal?.mode === "create" ? "Create chat" : "Rename chat"}
-          primaryButtonText={chatModal?.mode === "create" ? "Create" : "Save"}
-          secondaryButtonText="Cancel"
-          primaryButtonDisabled={chatModalBusy || !(chatModal?.title.trim() || chatModal?.mode === "create")}
-          onRequestClose={() => setChatModal(null)}
-          onRequestSubmit={() => void submitChatModal()}
-        >
-          <TextInput
-            id="chat-modal-title"
-            labelText="Chat title"
-            placeholder="Optional title"
-            value={chatModal?.title || ""}
-            onChange={(event) => {
-              const value = event.currentTarget.value;
-              setChatModal((prev) => (prev ? { ...prev, title: value } : prev));
-            }}
-          />
-        </Modal>
+      <Dialog
+        open={chatModal !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setChatModal(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{chatModal?.mode === "create" ? "Create chat" : "Rename chat"}</DialogTitle>
+            <DialogDescription>Set a title now or keep it empty for an auto-generated name.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium" htmlFor="chat-modal-title">
+              Chat title
+            </label>
+            <Input
+              id="chat-modal-title"
+              placeholder="Optional title"
+              value={chatModal?.title || ""}
+              onChange={(event) => {
+                const value = event.currentTarget.value;
+                setChatModal((prev) => (prev ? { ...prev, title: value } : prev));
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setChatModal(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={chatModalBusy || !(chatModal?.title.trim() || chatModal?.mode === "create")}
+              onClick={() => void submitChatModal()}
+            >
+              {chatModal?.mode === "create" ? "Create" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-        <Modal
-          open={confirmModal !== null}
-          danger
-          modalHeading={confirmModal?.heading || "Confirm"}
-          primaryButtonText={confirmModal?.confirmLabel || "Confirm"}
-          secondaryButtonText="Cancel"
-          primaryButtonDisabled={confirmModalBusy}
-          onRequestClose={() => setConfirmModal(null)}
-          onRequestSubmit={() => void submitConfirmModal()}
-        >
-          <p className="cds--type-body-01">{confirmModal?.body}</p>
-        </Modal>
-      </Content>
-    </Theme>
+      <Dialog
+        open={confirmModal !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmModal(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{confirmModal?.heading || "Confirm"}</DialogTitle>
+            <DialogDescription>{confirmModal?.body}</DialogDescription>
+          </DialogHeader>
+          <Separator />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirmModal(null)}>
+              Cancel
+            </Button>
+            <Button disabled={confirmModalBusy} variant="destructive" onClick={() => void submitConfirmModal()}>
+              {confirmModal?.confirmLabel || "Confirm"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

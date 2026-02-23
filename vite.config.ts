@@ -8,6 +8,11 @@ const outDir = fileURLToPath(new URL("./dist/client", import.meta.url));
 export default defineConfig({
   root: rootDir,
   plugins: [react()],
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./frontend/src", import.meta.url))
+    }
+  },
   build: {
     outDir,
     emptyOutDir: true,

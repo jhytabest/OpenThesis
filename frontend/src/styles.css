@@ -1,39 +1,44 @@
-:root {
-  color-scheme: light;
-  --brand-claw-red: #d6342e;
-  --brand-claw-red-hover: #b82d27;
-  --brand-claw-red-active: #8f231f;
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-.cds--g10 {
-  --cds-background-brand: var(--brand-claw-red);
-  --cds-border-interactive: var(--brand-claw-red);
-  --cds-chat-avatar-user: var(--brand-claw-red);
-  --cds-chat-button: var(--brand-claw-red);
-  --cds-chat-button-text-hover: var(--brand-claw-red-hover);
-  --cds-focus: var(--brand-claw-red);
-  --cds-icon-interactive: var(--brand-claw-red);
-  --cds-interactive: var(--brand-claw-red);
-  --cds-link-primary: var(--brand-claw-red);
-  --cds-link-primary-hover: var(--brand-claw-red-hover);
-  --cds-link-secondary: var(--brand-claw-red-hover);
-  --cds-button-primary: var(--brand-claw-red);
-  --cds-button-tertiary: var(--brand-claw-red);
-  --cds-button-primary-hover: var(--brand-claw-red-hover);
-  --cds-button-tertiary-hover: var(--brand-claw-red-hover);
-  --cds-button-primary-active: var(--brand-claw-red-active);
-  --cds-button-tertiary-active: var(--brand-claw-red-active);
-}
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 2 67% 51%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 2 67% 51%;
+    --radius: 0.5rem;
+  }
 
-html,
-body,
-#root {
-  width: 100%;
-  min-height: 100%;
-  margin: 0;
-}
+  * {
+    @apply border-border;
+  }
 
-body {
-  background: var(--cds-background);
-  color: var(--cds-text-primary);
+  html,
+  body,
+  #root {
+    width: 100%;
+    min-height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    margin: 0;
+  }
 }

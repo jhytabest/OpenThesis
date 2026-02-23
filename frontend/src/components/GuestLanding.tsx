@@ -1,33 +1,31 @@
-import { Button, Column, Grid, Layer, ListItem, Stack, Tile, UnorderedList } from "@carbon/react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function GuestLanding() {
   return (
-    <Grid fullWidth>
-      <Column sm={4} md={8} lg={10} xlg={10} max={10}>
-        <Layer>
-          <Tile>
-            <Stack gap={7}>
-              <img src="/brand/alexclaw-logo-192.png" alt="Alexclaw logo" width={96} height={96} />
-              <p className="cds--type-label-01">Alexclaw Research Hub</p>
-              <h1 className="cds--type-productive-heading-06">Your thesis workspace, now Carbon-native.</h1>
-              <p className="cds--type-body-01">
-                Create a project with thesis text and background research starts automatically. Use dashboard,
-                explorer, reading list, and chat in one place.
-              </p>
-              <UnorderedList>
-                <ListItem>Project-scoped papers, memory docs, and chats.</ListItem>
-                <ListItem>Integrated notes, comments, and reading workflow.</ListItem>
-                <ListItem>Background refreshes while you keep writing.</ListItem>
-              </UnorderedList>
-              <div>
-                <Button kind="primary" href="/auth/google">
-                  Sign in with Google
-                </Button>
-              </div>
-            </Stack>
-          </Tile>
-        </Layer>
-      </Column>
-    </Grid>
+    <main className="mx-auto flex min-h-screen w-full max-w-4xl items-center px-4 py-8">
+      <Card className="w-full">
+        <CardHeader className="space-y-4">
+          <img src="/brand/alexclaw-logo-192.png" alt="Alexclaw logo" width={96} height={96} />
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Alexclaw Research Hub</p>
+          <CardTitle className="text-3xl">Your thesis workspace, now shadcn-native.</CardTitle>
+          <CardDescription>
+            Create a project with thesis text and background research starts automatically. Use dashboard,
+            explorer, reading list, and chat in one place.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <ul className="list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+            <li>Project-scoped papers, memory docs, and chats.</li>
+            <li>Integrated notes, comments, and reading workflow.</li>
+            <li>Background refreshes while you keep writing.</li>
+          </ul>
+
+          <Button asChild>
+            <a href="/auth/google">Sign in with Google</a>
+          </Button>
+        </CardContent>
+      </Card>
+    </main>
   );
 }

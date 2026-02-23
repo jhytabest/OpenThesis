@@ -1,28 +1,19 @@
 import type { Dispatch, FormEvent, SetStateAction } from "react";
+import { Loader2 } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
-  Button,
-  ButtonSet,
-  Column,
-  ContainedList,
-  ContainedListItem,
-  Grid,
-  InlineLoading,
   Select,
+  SelectContent,
   SelectItem,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  Tag,
-  TextArea,
-  TextInput,
-  Tile
-} from "@carbon/react";
-
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import type {
   ExplorerFilters,
   ManualPaperForm,
@@ -44,6 +35,23 @@ type SetManualPaper = Dispatch<SetStateAction<ManualPaperForm>>;
 type SetCommentDrafts = Dispatch<SetStateAction<Record<string, string>>>;
 type SetReadingDrafts = Dispatch<SetStateAction<Record<string, ReadingDraft>>>;
 
+function LoadingLine({ text }: { text: string }) {
+  return (
+    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <Loader2 className="h-4 w-4 animate-spin" />
+      <span>{text}</span>
+    </div>
+  );
+}
+
+function FieldLabel({ htmlFor, children }: { htmlFor: string; children: string }) {
+  return (
+    <label className="text-sm font-medium" htmlFor={htmlFor}>
+      {children}
+    </label>
+  );
+}
+
 interface NewProjectViewProps {
   newProjectTitle: string;
   newProjectThesis: string;
@@ -62,36 +70,42 @@ export function NewProjectView({
   onSubmitNewProject
 }: NewProjectViewProps) {
   return (
-    <Tile>
-      <form onSubmit={onSubmitNewProject}>
-        <Stack gap={5}>
-          <h3 className="cds--type-productive-heading-03">New project</h3>
-          <p className="cds--type-body-01">
-            Paste thesis text to initialize dashboard, explorer, reading workflow, and chat.
-          </p>
-          <TextInput
-            id="project-title"
-            labelText="Project title (optional)"
-            value={newProjectTitle}
-            placeholder="e.g. AI and urban policy"
-            onChange={(event) => onSetNewProjectTitle(event.currentTarget.value)}
-          />
-          <TextArea
-            id="project-thesis"
-            labelText="Thesis text"
-            value={newProjectThesis}
-            rows={8}
-            placeholder="Paste at least 30 characters"
-            onChange={(event) => onSetNewProjectThesis(event.currentTarget.value)}
-          />
-          <div>
-            <Button type="submit" kind="primary" disabled={creatingProject}>
-              {creatingProject ? "Creating project..." : "Create project"}
-            </Button>
+    <Card>
+      <CardHeader>
+        <CardTitle>New project</CardTitle>
+        <CardDescription>
+          Paste thesis text to initialize dashboard, explorer, reading workflow, and chat.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form className="space-y-4" onSubmit={onSubmitNewProject}>
+          <div className="space-y-2">
+            <FieldLabel htmlFor="project-title">Project title (optional)</FieldLabel>
+            <Input
+              id="project-title"
+              value={newProjectTitle}
+              placeholder="e.g. AI and urban policy"
+              onChange={(event) => onSetNewProjectTitle(event.currentTarget.value)}
+            />
           </div>
-        </Stack>
-      </form>
-    </Tile>
+
+          <div className="space-y-2">
+            <FieldLabel htmlFor="project-thesis">Thesis text</FieldLabel>
+            <Textarea
+              id="project-thesis"
+              value={newProjectThesis}
+              rows={8}
+              placeholder="Paste at least 30 characters"
+              onChange={(event) => onSetNewProjectThesis(event.currentTarget.value)}
+            />
+          </div>
+
+          <Button disabled={creatingProject} type="submit">
+            {creatingProject ? "Creating project..." : "Create project"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -115,7 +129,7 @@ export function DashboardView({
   onSaveMemoryDoc
 }: DashboardViewProps) {
   if (dashboardLoading) {
-    return <InlineLoading description="Loading dashboard..." />;
+    return <LoadingLine text="Loading dashboard..." />;
   }
 
   if (!dashboard) {
@@ -123,98 +137,93 @@ export function DashboardView({
   }
 
   return (
-    <Stack gap={6}>
-      <Grid condensed fullWidth>
-        <Column sm={4} md={4} lg={4} xlg={4} max={4}>
-          <Tile>
-            <Stack gap={2}>
-              <p className="cds--type-label-01">Papers</p>
-              <p className="cds--type-productive-heading-04">{dashboard.stats.papers}</p>
-            </Stack>
-          </Tile>
-        </Column>
-        <Column sm={4} md={4} lg={4} xlg={4} max={4}>
-          <Tile>
-            <Stack gap={2}>
-              <p className="cds--type-label-01">Open Access</p>
-              <p className="cds--type-productive-heading-04">{dashboard.stats.openAccess}</p>
-            </Stack>
-          </Tile>
-        </Column>
-        <Column sm={4} md={4} lg={4} xlg={4} max={4}>
-          <Tile>
-            <Stack gap={2}>
-              <p className="cds--type-label-01">Reading List</p>
-              <p className="cds--type-productive-heading-04">{dashboard.stats.readingList}</p>
-            </Stack>
-          </Tile>
-        </Column>
-        <Column sm={4} md={4} lg={4} xlg={4} max={4}>
-          <Tile>
-            <Stack gap={2}>
-              <p className="cds--type-label-01">Chats</p>
-              <p className="cds--type-productive-heading-04">{dashboard.stats.chats}</p>
-            </Stack>
-          </Tile>
-        </Column>
-      </Grid>
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Papers</p>
+            <p className="text-2xl font-semibold">{dashboard.stats.papers}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Open access</p>
+            <p className="text-2xl font-semibold">{dashboard.stats.openAccess}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Reading list</p>
+            <p className="text-2xl font-semibold">{dashboard.stats.readingList}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Chats</p>
+            <p className="text-2xl font-semibold">{dashboard.stats.chats}</p>
+          </CardContent>
+        </Card>
+      </div>
 
-      <Tile>
-        <Stack gap={4}>
-          <h3 className="cds--type-productive-heading-03">Project summary</h3>
-          <p className="cds--type-body-01">
+      <Card>
+        <CardHeader>
+          <CardTitle>Project summary</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm leading-6 text-muted-foreground">
             {dashboard.summary.thesisSummary || "Your thesis summary will appear after the background run completes."}
           </p>
-          <Stack orientation="horizontal" gap={3}>
-            <Tag type="green">Foundational: {dashboard.stats.foundational}</Tag>
-            <Tag type="cyan">Depth: {dashboard.stats.depth}</Tag>
-            <Tag type="gray">Background: {dashboard.stats.background}</Tag>
-            <Tag type="magenta">Bookmarked: {dashboard.stats.bookmarked}</Tag>
-          </Stack>
-          <p className="cds--type-body-compact-01">{dashboardStatusLine(dashboard)}</p>
-        </Stack>
-      </Tile>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="secondary">Foundational: {dashboard.stats.foundational}</Badge>
+            <Badge variant="secondary">Depth: {dashboard.stats.depth}</Badge>
+            <Badge variant="secondary">Background: {dashboard.stats.background}</Badge>
+            <Badge>Bookmarked: {dashboard.stats.bookmarked}</Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">{dashboardStatusLine(dashboard)}</p>
+        </CardContent>
+      </Card>
 
-      <Tile>
-        <Stack gap={5}>
-          <h3 className="cds--type-productive-heading-03">Project memory docs</h3>
-          <p className="cds--type-body-01">
-            Chats update memory docs automatically. You can refine each document manually.
-          </p>
+      <Card>
+        <CardHeader>
+          <CardTitle>Project memory docs</CardTitle>
+          <CardDescription>Chats update memory docs automatically. You can refine each document manually.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {memoryDocs.length === 0 ? <p className="text-sm text-muted-foreground">No memory docs yet.</p> : null}
 
-          {memoryDocs.length === 0 ? (
-            <p className="cds--type-body-01">No memory docs yet.</p>
-          ) : (
-            memoryDocs.map((doc) => {
-              const draft = memoryDrafts[doc.key] || { title: doc.title, content: doc.content };
-              return (
-                <Tile key={doc.id}>
-                  <Stack gap={4}>
-                    <Grid condensed fullWidth>
-                      <Column sm={4} md={4} lg={8} xlg={8} max={8}>
-                        <TextInput
-                          id={`memory-title-${doc.key}`}
-                          labelText="Title"
-                          value={draft.title}
-                          onChange={(event) =>
-                            setMemoryDrafts((prev) => ({
-                              ...prev,
-                              [doc.key]: {
-                                ...draft,
-                                title: event.currentTarget.value
-                              }
-                            }))
-                          }
-                        />
-                      </Column>
-                      <Column sm={4} md={4} lg={8} xlg={8} max={8}>
-                        <TextInput id={`memory-source-${doc.key}`} labelText="Source" value={doc.source} readOnly />
-                      </Column>
-                    </Grid>
+          {memoryDocs.map((doc) => {
+            const draft = memoryDrafts[doc.key] || { title: doc.title, content: doc.content };
+            return (
+              <Card key={doc.id}>
+                <CardContent className="space-y-4 pt-6">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <FieldLabel htmlFor={`memory-title-${doc.key}`}>Title</FieldLabel>
+                      <Input
+                        id={`memory-title-${doc.key}`}
+                        value={draft.title}
+                        onChange={(event) =>
+                          setMemoryDrafts((prev) => ({
+                            ...prev,
+                            [doc.key]: {
+                              ...draft,
+                              title: event.currentTarget.value
+                            }
+                          }))
+                        }
+                      />
+                    </div>
 
-                    <TextArea
+                    <div className="space-y-2">
+                      <FieldLabel htmlFor={`memory-source-${doc.key}`}>Source</FieldLabel>
+                      <Input id={`memory-source-${doc.key}`} value={doc.source} readOnly />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <FieldLabel htmlFor={`memory-content-${doc.key}`}>Content</FieldLabel>
+                    <Textarea
                       id={`memory-content-${doc.key}`}
-                      labelText="Content"
                       rows={8}
                       value={draft.content}
                       onChange={(event) =>
@@ -227,26 +236,26 @@ export function DashboardView({
                         }))
                       }
                     />
+                  </div>
 
-                    <ButtonSet>
-                      <Button
-                        kind="secondary"
-                        size="sm"
-                        disabled={savingMemoryKey === doc.key}
-                        onClick={() => onSaveMemoryDoc(doc.key)}
-                      >
-                        {savingMemoryKey === doc.key ? "Saving..." : "Save memory doc"}
-                      </Button>
-                    </ButtonSet>
-                    <p className="cds--type-body-compact-01">Updated {formatDate(doc.updatedAt)}</p>
-                  </Stack>
-                </Tile>
-              );
-            })
-          )}
-        </Stack>
-      </Tile>
-    </Stack>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Button
+                      disabled={savingMemoryKey === doc.key}
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => onSaveMemoryDoc(doc.key)}
+                    >
+                      {savingMemoryKey === doc.key ? "Saving..." : "Save memory doc"}
+                    </Button>
+                    <p className="text-xs text-muted-foreground">Updated {formatDate(doc.updatedAt)}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -294,16 +303,18 @@ export function ExplorerView({
   onSaveComment
 }: ExplorerViewProps) {
   return (
-    <Stack gap={6}>
-      <Tile>
-        <form onSubmit={onApplyExplorerFilters}>
-          <Stack gap={5}>
-            <h3 className="cds--type-productive-heading-03">Filters</h3>
-            <Grid condensed fullWidth>
-              <Column sm={4} md={4} lg={8} xlg={8} max={8}>
-                <TextInput
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Filters</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form className="space-y-4" onSubmit={onApplyExplorerFilters}>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div className="space-y-2 md:col-span-2 xl:col-span-1">
+                <FieldLabel htmlFor="explorer-query">Search</FieldLabel>
+                <Input
                   id="explorer-query"
-                  labelText="Search"
                   value={explorerDraftFilters.query}
                   placeholder="Title, abstract, DOI"
                   onChange={(event) =>
@@ -313,308 +324,292 @@ export function ExplorerView({
                     }))
                   }
                 />
-              </Column>
-              <Column sm={4} md={4} lg={4} xlg={4} max={4}>
+              </div>
+
+              <div className="space-y-2">
+                <FieldLabel htmlFor="explorer-sort">Sort</FieldLabel>
                 <Select
-                  id="explorer-sort"
-                  labelText="Sort"
                   value={explorerDraftFilters.sort}
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     setExplorerDraftFilters((prev) => ({
                       ...prev,
-                      sort: event.currentTarget.value as ExplorerFilters["sort"]
+                      sort: value as ExplorerFilters["sort"]
                     }))
                   }
                 >
-                  <SelectItem value="relevance" text="Most relevant" />
-                  <SelectItem value="recent" text="Recent" />
-                  <SelectItem value="citations" text="Citations" />
-                  <SelectItem value="newest" text="Recently added" />
+                  <SelectTrigger id="explorer-sort">
+                    <SelectValue placeholder="Sort" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="relevance">Most relevant</SelectItem>
+                    <SelectItem value="recent">Recent</SelectItem>
+                    <SelectItem value="citations">Citations</SelectItem>
+                    <SelectItem value="newest">Recently added</SelectItem>
+                  </SelectContent>
                 </Select>
-              </Column>
-              <Column sm={4} md={4} lg={4} xlg={4} max={4}>
-                <Select
-                  id="explorer-tier"
-                  labelText="Tier"
-                  value={explorerDraftFilters.tier}
-                  onChange={(event) =>
-                    setExplorerDraftFilters((prev) => ({
-                      ...prev,
-                      tier: event.currentTarget.value as ExplorerFilters["tier"]
-                    }))
-                  }
-                >
-                  <SelectItem value="" text="All tiers" />
-                  <SelectItem value="FOUNDATIONAL" text="Foundational" />
-                  <SelectItem value="DEPTH" text="Depth" />
-                  <SelectItem value="BACKGROUND" text="Background" />
-                </Select>
-              </Column>
-            </Grid>
+              </div>
 
-            <Grid condensed fullWidth>
-              <Column sm={4} md={4} lg={8} xlg={8} max={8}>
+              <div className="space-y-2">
+                <FieldLabel htmlFor="explorer-tier">Tier</FieldLabel>
                 <Select
-                  id="explorer-oa"
-                  labelText="Open access"
+                  value={explorerDraftFilters.tier || "all"}
+                  onValueChange={(value) =>
+                    setExplorerDraftFilters((prev) => ({
+                      ...prev,
+                      tier: value === "all" ? "" : (value as ExplorerFilters["tier"])
+                    }))
+                  }
+                >
+                  <SelectTrigger id="explorer-tier">
+                    <SelectValue placeholder="Tier" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All tiers</SelectItem>
+                    <SelectItem value="FOUNDATIONAL">Foundational</SelectItem>
+                    <SelectItem value="DEPTH">Depth</SelectItem>
+                    <SelectItem value="BACKGROUND">Background</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <FieldLabel htmlFor="explorer-oa">Open access</FieldLabel>
+                <Select
                   value={explorerDraftFilters.oaOnly ? "true" : "false"}
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     setExplorerDraftFilters((prev) => ({
                       ...prev,
-                      oaOnly: event.currentTarget.value === "true"
+                      oaOnly: value === "true"
                     }))
                   }
                 >
-                  <SelectItem value="false" text="All" />
-                  <SelectItem value="true" text="Open access only" />
+                  <SelectTrigger id="explorer-oa">
+                    <SelectValue placeholder="Open access" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="false">All</SelectItem>
+                    <SelectItem value="true">Open access only</SelectItem>
+                  </SelectContent>
                 </Select>
-              </Column>
-              <Column sm={4} md={4} lg={8} xlg={8} max={8}>
-                <Select
-                  id="explorer-bookmarked"
-                  labelText="Bookmarks"
-                  value={explorerDraftFilters.bookmarkedOnly ? "true" : "false"}
-                  onChange={(event) =>
-                    setExplorerDraftFilters((prev) => ({
-                      ...prev,
-                      bookmarkedOnly: event.currentTarget.value === "true"
-                    }))
-                  }
-                >
-                  <SelectItem value="false" text="All" />
-                  <SelectItem value="true" text="Bookmarked only" />
-                </Select>
-              </Column>
-            </Grid>
+              </div>
 
-            <ButtonSet>
-              <Button type="submit" kind="secondary" size="sm">
+              <div className="space-y-2">
+                <FieldLabel htmlFor="explorer-bookmarked">Bookmarks</FieldLabel>
+                <Select
+                  value={explorerDraftFilters.bookmarkedOnly ? "true" : "false"}
+                  onValueChange={(value) =>
+                    setExplorerDraftFilters((prev) => ({
+                      ...prev,
+                      bookmarkedOnly: value === "true"
+                    }))
+                  }
+                >
+                  <SelectTrigger id="explorer-bookmarked">
+                    <SelectValue placeholder="Bookmarks" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="false">All</SelectItem>
+                    <SelectItem value="true">Bookmarked only</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button size="sm" type="submit" variant="secondary">
                 Apply filters
               </Button>
-            </ButtonSet>
-            <p className="cds--type-body-compact-01">Sorting by: {mapSortLabel(explorerFilters.sort)}</p>
-          </Stack>
-        </form>
-      </Tile>
+              <p className="text-xs text-muted-foreground">Sorting by: {mapSortLabel(explorerFilters.sort)}</p>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
 
-      <Tile>
-        <form onSubmit={onSubmitManualPaper}>
-          <Stack gap={5}>
-            <h3 className="cds--type-productive-heading-03">Add paper manually</h3>
-            <Grid condensed fullWidth>
-              <Column sm={4} md={4} lg={8} xlg={8} max={8}>
-                <TextInput
+      <Card>
+        <CardHeader>
+          <CardTitle>Add paper manually</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form className="space-y-4" onSubmit={onSubmitManualPaper}>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <FieldLabel htmlFor="manual-title">Title</FieldLabel>
+                <Input
                   id="manual-title"
-                  labelText="Title"
                   value={manualPaper.title}
                   onChange={(event) => setManualPaper((prev) => ({ ...prev, title: event.currentTarget.value }))}
                 />
-              </Column>
-              <Column sm={4} md={4} lg={8} xlg={8} max={8}>
-                <TextInput
+              </div>
+              <div className="space-y-2">
+                <FieldLabel htmlFor="manual-doi">DOI</FieldLabel>
+                <Input
                   id="manual-doi"
-                  labelText="DOI"
                   value={manualPaper.doi}
                   onChange={(event) => setManualPaper((prev) => ({ ...prev, doi: event.currentTarget.value }))}
                 />
-              </Column>
-            </Grid>
+              </div>
+            </div>
 
-            <Grid condensed fullWidth>
-              <Column sm={4} md={4} lg={8} xlg={8} max={8}>
-                <TextInput
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <FieldLabel htmlFor="manual-year">Year</FieldLabel>
+                <Input
                   id="manual-year"
-                  labelText="Year"
                   value={manualPaper.year}
                   onChange={(event) => setManualPaper((prev) => ({ ...prev, year: event.currentTarget.value }))}
                 />
-              </Column>
-              <Column sm={4} md={4} lg={8} xlg={8} max={8}>
-                <TextInput
+              </div>
+              <div className="space-y-2">
+                <FieldLabel htmlFor="manual-citations">Citation count</FieldLabel>
+                <Input
                   id="manual-citations"
-                  labelText="Citation count"
                   value={manualPaper.citationCount}
                   onChange={(event) =>
                     setManualPaper((prev) => ({ ...prev, citationCount: event.currentTarget.value }))
                   }
                 />
-              </Column>
-            </Grid>
+              </div>
+            </div>
 
-            <TextInput
-              id="manual-fields"
-              labelText="Fields of study (comma-separated)"
-              value={manualPaper.fields}
-              onChange={(event) => setManualPaper((prev) => ({ ...prev, fields: event.currentTarget.value }))}
-            />
+            <div className="space-y-2">
+              <FieldLabel htmlFor="manual-fields">Fields of study (comma-separated)</FieldLabel>
+              <Input
+                id="manual-fields"
+                value={manualPaper.fields}
+                onChange={(event) => setManualPaper((prev) => ({ ...prev, fields: event.currentTarget.value }))}
+              />
+            </div>
 
-            <TextArea
-              id="manual-abstract"
-              labelText="Abstract"
-              value={manualPaper.abstract}
-              rows={4}
-              onChange={(event) => setManualPaper((prev) => ({ ...prev, abstract: event.currentTarget.value }))}
-            />
+            <div className="space-y-2">
+              <FieldLabel htmlFor="manual-abstract">Abstract</FieldLabel>
+              <Textarea
+                id="manual-abstract"
+                value={manualPaper.abstract}
+                rows={4}
+                onChange={(event) => setManualPaper((prev) => ({ ...prev, abstract: event.currentTarget.value }))}
+              />
+            </div>
 
-            <ButtonSet>
-              <Button type="submit" kind="primary" disabled={addingPaper}>
-                {addingPaper ? "Adding paper..." : "Add paper"}
-              </Button>
-            </ButtonSet>
-          </Stack>
-        </form>
-      </Tile>
+            <Button disabled={addingPaper} type="submit">
+              {addingPaper ? "Adding paper..." : "Add paper"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
-      <Tile>
-        <Stack gap={5}>
-          <h3 className="cds--type-productive-heading-03">Paper explorer</h3>
-          {explorerLoading ? <InlineLoading description="Loading papers..." /> : null}
+      <Card>
+        <CardHeader>
+          <CardTitle>Paper explorer</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {explorerLoading ? <LoadingLine text="Loading papers..." /> : null}
           {explorerPapers.length === 0 && !explorerLoading ? (
-            <p className="cds--type-body-01">No papers match the current filters.</p>
+            <p className="text-sm text-muted-foreground">No papers match the current filters.</p>
           ) : null}
 
-          {explorerPapers.length > 0 ? (
-            <>
-              <Table aria-label="Project papers">
-                <TableHead>
-                  <TableRow>
-                    <TableHeader>Paper</TableHeader>
-                    <TableHeader>Tier</TableHeader>
-                    <TableHeader>Year</TableHeader>
-                    <TableHeader>Citations</TableHeader>
-                    <TableHeader>Actions</TableHeader>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {explorerPapers.map((paper) => (
-                    <TableRow key={paper.id}>
-                      <TableCell>
-                        <Stack gap={2}>
-                          <p className="cds--type-body-01">{paper.title}</p>
-                          <p className="cds--type-body-compact-01">
-                            {(paper.abstract || "No abstract available").slice(0, 220)}
-                          </p>
-                        </Stack>
-                      </TableCell>
-                      <TableCell>
-                        <Tag type="gray">{paper.tier || "MANUAL"}</Tag>
-                      </TableCell>
-                      <TableCell>{paper.year || "n/a"}</TableCell>
-                      <TableCell>{paper.citationCount || 0}</TableCell>
-                      <TableCell>
-                        <Stack gap={2}>
-                          <div>
-                            <Button
-                              kind="ghost"
-                              size="sm"
-                              disabled={updatingPaperId === paper.id}
-                              onClick={() => onUpdatePaper(paper.id, { bookmarked: !paper.bookmarked })}
-                            >
-                              {paper.bookmarked ? "Bookmarked" : "Bookmark"}
-                            </Button>
-                          </div>
-                          <div>
-                            <Button
-                              kind="ghost"
-                              size="sm"
-                              disabled={updatingPaperId === paper.id}
-                              onClick={() => onUpdatePaper(paper.id, { inReadingList: !paper.inReadingList })}
-                            >
-                              {paper.inReadingList ? "In reading list" : "Add to reading list"}
-                            </Button>
-                          </div>
-                          <div>
-                            <Button kind="ghost" size="sm" onClick={() => onToggleComments(paper.id)}>
-                              {openComments[paper.id] ? "Hide comments" : `Comments (${paper.commentCount || 0})`}
-                            </Button>
-                          </div>
-                          <div>
-                            <Button kind="danger--ghost" size="sm" onClick={() => onRequestDeletePaper(paper.id, "explorer")}>
-                              Remove
-                            </Button>
-                          </div>
-                          {paper.access?.pdfUrl ? (
-                            <div>
-                              <Button
-                                kind="tertiary"
-                                size="sm"
-                                href={paper.access.pdfUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                Open PDF
-                              </Button>
-                            </div>
-                          ) : null}
-                          {paper.doi ? (
-                            <div>
-                              <Button
-                                kind="tertiary"
-                                size="sm"
-                                href={`https://doi.org/${encodeURIComponent(paper.doi)}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                DOI
-                              </Button>
-                            </div>
-                          ) : null}
-                        </Stack>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+          <div className="space-y-3">
+            {explorerPapers.map((paper) => (
+              <Card key={paper.id}>
+                <CardContent className="space-y-4 pt-6">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <h4 className="font-medium leading-6">{paper.title}</h4>
+                      <p className="text-sm text-muted-foreground">
+                        {(paper.abstract || "No abstract available").slice(0, 220)}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <Badge variant="outline">{paper.tier || "MANUAL"}</Badge>
+                        <span>{paper.year || "n/a"}</span>
+                        <span>{paper.citationCount || 0} citations</span>
+                      </div>
+                    </div>
+                  </div>
 
-              {explorerPapers
-                .filter((paper) => openComments[paper.id])
-                .map((paper) => {
-                  const comments = paperComments[paper.id] || [];
-                  return (
-                    <Tile key={`comments-${paper.id}`}>
-                      <Stack gap={4}>
-                        <h4 className="cds--type-productive-heading-03">Comments · {paper.title}</h4>
-                        {comments.length === 0 ? (
-                          <p className="cds--type-body-compact-01">No comments yet.</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      disabled={updatingPaperId === paper.id}
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => onUpdatePaper(paper.id, { bookmarked: !paper.bookmarked })}
+                    >
+                      {paper.bookmarked ? "Bookmarked" : "Bookmark"}
+                    </Button>
+                    <Button
+                      disabled={updatingPaperId === paper.id}
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => onUpdatePaper(paper.id, { inReadingList: !paper.inReadingList })}
+                    >
+                      {paper.inReadingList ? "In reading list" : "Add to reading list"}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => onToggleComments(paper.id)}>
+                      {openComments[paper.id] ? "Hide comments" : `Comments (${paper.commentCount || 0})`}
+                    </Button>
+                    <Button size="sm" variant="destructive" onClick={() => onRequestDeletePaper(paper.id, "explorer")}>Remove</Button>
+                    {paper.access?.pdfUrl ? (
+                      <Button asChild size="sm" variant="outline">
+                        <a href={paper.access.pdfUrl} rel="noopener noreferrer" target="_blank">
+                          Open PDF
+                        </a>
+                      </Button>
+                    ) : null}
+                    {paper.doi ? (
+                      <Button asChild size="sm" variant="outline">
+                        <a href={`https://doi.org/${encodeURIComponent(paper.doi)}`} rel="noopener noreferrer" target="_blank">
+                          DOI
+                        </a>
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  {openComments[paper.id] ? (
+                    <>
+                      <Separator />
+                      <div className="space-y-3">
+                        <h5 className="text-sm font-medium">Comments</h5>
+                        {(paperComments[paper.id] || []).length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No comments yet.</p>
                         ) : (
-                          <ContainedList label="Existing comments">
-                            {comments.map((comment) => (
-                              <ContainedListItem key={comment.id}>
-                                <Stack gap={2}>
-                                  <p className="cds--type-body-compact-01">{comment.body}</p>
-                                  <p className="cds--type-body-compact-01">{formatDate(comment.createdAt)}</p>
-                                </Stack>
-                              </ContainedListItem>
+                          <div className="space-y-2">
+                            {(paperComments[paper.id] || []).map((comment) => (
+                              <div className="rounded-md border p-3" key={comment.id}>
+                                <p className="text-sm">{comment.body}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">{formatDate(comment.createdAt)}</p>
+                              </div>
                             ))}
-                          </ContainedList>
+                          </div>
                         )}
 
-                        <TextArea
-                          id={`comment-${paper.id}`}
-                          labelText="Add comment"
-                          rows={3}
-                          value={commentDrafts[paper.id] || ""}
-                          onChange={(event) =>
-                            setCommentDrafts((prev) => ({
-                              ...prev,
-                              [paper.id]: event.currentTarget.value
-                            }))
-                          }
-                        />
-                        <ButtonSet>
-                          <Button kind="secondary" size="sm" onClick={() => onSaveComment(paper.id)}>
-                            Save comment
-                          </Button>
-                        </ButtonSet>
-                      </Stack>
-                    </Tile>
-                  );
-                })}
-            </>
-          ) : null}
-        </Stack>
-      </Tile>
-    </Stack>
+                        <div className="space-y-2">
+                          <FieldLabel htmlFor={`comment-${paper.id}`}>Add comment</FieldLabel>
+                          <Textarea
+                            id={`comment-${paper.id}`}
+                            rows={3}
+                            value={commentDrafts[paper.id] || ""}
+                            onChange={(event) =>
+                              setCommentDrafts((prev) => ({
+                                ...prev,
+                                [paper.id]: event.currentTarget.value
+                              }))
+                            }
+                          />
+                        </div>
+
+                        <Button size="sm" variant="secondary" onClick={() => onSaveComment(paper.id)}>
+                          Save comment
+                        </Button>
+                      </div>
+                    </>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -640,101 +635,95 @@ export function ReadingView({
   onRequestDeletePaper
 }: ReadingViewProps) {
   return (
-    <Tile>
-      <Stack gap={5}>
-        <h3 className="cds--type-productive-heading-03">Reading list</h3>
-        {readingLoading ? <InlineLoading description="Loading reading list..." /> : null}
+    <Card>
+      <CardHeader>
+        <CardTitle>Reading list</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {readingLoading ? <LoadingLine text="Loading reading list..." /> : null}
         {readingPapers.length === 0 && !readingLoading ? (
-          <p className="cds--type-body-01">Reading list is empty. Add papers from the explorer.</p>
+          <p className="text-sm text-muted-foreground">Reading list is empty. Add papers from the explorer.</p>
         ) : null}
 
         {readingPapers.map((paper) => {
           const draft = readingDrafts[paper.id] || { tags: "", comment: "" };
           return (
-            <Tile key={paper.id}>
-              <Stack gap={4}>
-                <h4 className="cds--type-productive-heading-03">{paper.title}</h4>
-                <p className="cds--type-body-compact-01">
-                  {paper.year || "Year n/a"} · {paper.citationCount || 0} citations · {paper.tier || "MANUAL"}
-                </p>
+            <Card key={paper.id}>
+              <CardContent className="space-y-4 pt-6">
+                <div>
+                  <h4 className="font-medium">{paper.title}</h4>
+                  <p className="text-sm text-muted-foreground">
+                    {paper.year || "Year n/a"} · {paper.citationCount || 0} citations · {paper.tier || "MANUAL"}
+                  </p>
+                </div>
 
-                <TextInput
-                  id={`reading-tags-${paper.id}`}
-                  labelText="Tags (comma-separated)"
-                  value={draft.tags}
-                  onChange={(event) =>
-                    setReadingDrafts((prev) => ({
-                      ...prev,
-                      [paper.id]: {
-                        ...draft,
-                        tags: event.currentTarget.value
-                      }
-                    }))
-                  }
-                />
+                <div className="space-y-2">
+                  <FieldLabel htmlFor={`reading-tags-${paper.id}`}>Tags (comma-separated)</FieldLabel>
+                  <Input
+                    id={`reading-tags-${paper.id}`}
+                    value={draft.tags}
+                    onChange={(event) =>
+                      setReadingDrafts((prev) => ({
+                        ...prev,
+                        [paper.id]: {
+                          ...draft,
+                          tags: event.currentTarget.value
+                        }
+                      }))
+                    }
+                  />
+                </div>
 
-                <TextArea
-                  id={`reading-comment-${paper.id}`}
-                  labelText="Comments"
-                  rows={4}
-                  value={draft.comment}
-                  onChange={(event) =>
-                    setReadingDrafts((prev) => ({
-                      ...prev,
-                      [paper.id]: {
-                        ...draft,
-                        comment: event.currentTarget.value
-                      }
-                    }))
-                  }
-                />
+                <div className="space-y-2">
+                  <FieldLabel htmlFor={`reading-comment-${paper.id}`}>Comments</FieldLabel>
+                  <Textarea
+                    id={`reading-comment-${paper.id}`}
+                    rows={4}
+                    value={draft.comment}
+                    onChange={(event) =>
+                      setReadingDrafts((prev) => ({
+                        ...prev,
+                        [paper.id]: {
+                          ...draft,
+                          comment: event.currentTarget.value
+                        }
+                      }))
+                    }
+                  />
+                </div>
 
-                <Stack gap={2}>
-                  <div>
-                    <Button
-                      kind="secondary"
-                      size="sm"
-                      disabled={savingReadingPaperId === paper.id}
-                      onClick={() => onSaveReadingEntry(paper.id)}
-                    >
-                      {savingReadingPaperId === paper.id ? "Saving..." : "Save notes"}
-                    </Button>
-                  </div>
-                  <div>
-                    <Button kind="ghost" size="sm" onClick={() => onUpdatePaper(paper.id, { bookmarked: !paper.bookmarked })}>
-                      {paper.bookmarked ? "Bookmarked" : "Bookmark"}
-                    </Button>
-                  </div>
-                  <div>
-                    <Button kind="danger--ghost" size="sm" onClick={() => onUpdatePaper(paper.id, { inReadingList: false })}>
-                      Remove from list
-                    </Button>
-                  </div>
-                  <div>
-                    <Button kind="danger--tertiary" size="sm" onClick={() => onRequestDeletePaper(paper.id, "reading")}>
-                      Delete paper
-                    </Button>
-                  </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    disabled={savingReadingPaperId === paper.id}
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => onSaveReadingEntry(paper.id)}
+                  >
+                    {savingReadingPaperId === paper.id ? "Saving..." : "Save notes"}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => onUpdatePaper(paper.id, { bookmarked: !paper.bookmarked })}>
+                    {paper.bookmarked ? "Bookmarked" : "Bookmark"}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => onUpdatePaper(paper.id, { inReadingList: false })}>
+                    Remove from list
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => onRequestDeletePaper(paper.id, "reading")}>
+                    Delete paper
+                  </Button>
                   {paper.access?.pdfUrl ? (
-                    <div>
-                      <Button
-                        kind="tertiary"
-                        size="sm"
-                        href={paper.access.pdfUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
+                    <Button asChild size="sm" variant="outline">
+                      <a href={paper.access.pdfUrl} rel="noopener noreferrer" target="_blank">
                         Open PDF
-                      </Button>
-                    </div>
+                      </a>
+                    </Button>
                   ) : null}
-                </Stack>
-              </Stack>
-            </Tile>
+                </div>
+              </CardContent>
+            </Card>
           );
         })}
-      </Stack>
-    </Tile>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -761,59 +750,56 @@ export function ChatView({
 }: ChatViewProps) {
   if (!activeChat) {
     return (
-      <Tile>
-        <Stack gap={4}>
-          <h3 className="cds--type-productive-heading-03">Start a chat</h3>
-          <p className="cds--type-body-01">
+      <Card>
+        <CardHeader>
+          <CardTitle>Start a chat</CardTitle>
+          <CardDescription>
             Open a chat to debate your thesis, synthesize findings, and plan writing tasks.
-          </p>
-          <div>
-            <Button kind="primary" onClick={onOpenCreateChat}>
-              Create chat
-            </Button>
-          </div>
-        </Stack>
-      </Tile>
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button onClick={onOpenCreateChat}>Create chat</Button>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <Tile>
-      <Stack gap={5}>
-        {chatLoading ? <InlineLoading description="Loading messages..." /> : null}
+    <Card>
+      <CardContent className="space-y-4 pt-6">
+        {chatLoading ? <LoadingLine text="Loading messages..." /> : null}
         {!chatLoading && chatMessages.length === 0 ? (
-          <p className="cds--type-body-01">No messages yet. Start the conversation.</p>
+          <p className="text-sm text-muted-foreground">No messages yet. Start the conversation.</p>
         ) : null}
 
         {chatMessages.length > 0 ? (
-          <ContainedList label="Messages">
+          <div className="space-y-2 rounded-md border p-3">
             {chatMessages.map((message) => (
-              <ContainedListItem key={message.id}>
-                <Stack gap={3}>
-                  <Tag type={message.role === "user" ? "red" : "gray"}>{message.role}</Tag>
-                  <p className="cds--type-body-01">{message.content}</p>
-                </Stack>
-              </ContainedListItem>
+              <div className="space-y-2 rounded-md border p-3" key={message.id}>
+                <Badge variant={message.role === "user" ? "default" : "outline"}>{message.role}</Badge>
+                <p className="text-sm leading-6">{message.content}</p>
+              </div>
             ))}
-          </ContainedList>
+          </div>
         ) : null}
 
-        <form onSubmit={onSubmitChatMessage}>
-          <Stack gap={4}>
-            <TextArea
+        <form className="space-y-3" onSubmit={onSubmitChatMessage}>
+          <div className="space-y-2">
+            <FieldLabel htmlFor="chat-input">Message</FieldLabel>
+            <Textarea
               id="chat-input"
-              labelText="Message"
               rows={3}
               placeholder="Ask anything about your thesis, sources, or next plan."
               value={chatInput}
               onChange={(event) => onSetChatInput(event.currentTarget.value)}
             />
-            <Button type="submit" kind="primary" disabled={sendingMessage}>
-              {sendingMessage ? "Sending..." : "Send"}
-            </Button>
-          </Stack>
+          </div>
+
+          <Button disabled={sendingMessage} type="submit">
+            {sendingMessage ? "Sending..." : "Send"}
+          </Button>
         </form>
-      </Stack>
-    </Tile>
+      </CardContent>
+    </Card>
   );
 }

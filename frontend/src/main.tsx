@@ -2,7 +2,6 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 
-import "@carbon/styles/css/styles.css";
 import "./styles.css";
 
 const container = document.getElementById("root");

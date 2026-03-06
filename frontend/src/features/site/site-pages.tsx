@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   ActivityIcon,
   Building2Icon,
@@ -21,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -30,7 +32,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import type { SessionUser } from "@/lib/api";
+import { ApiError, settingsApi, type ByokProvider, type ByokSettings, type SessionUser } from "@/lib/api";
 
 interface SitePagesProps {
   page: SitePageKey;
@@ -84,8 +86,114 @@ const LegalLinks = ({ onNavigate }: { onNavigate: (path: string) => void }) => (
   </div>
 );
 
+const BYOK_PROVIDER_LABELS: Record<ByokProvider, string> = {
+  openai: "OpenAI",
+  openrouter: "OpenRouter",
+  gemini: "Gemini",
+  claude: "Claude"
+};
+
+const BYOK_DEFAULT_MODELS: Record<ByokProvider, string> = {
+  openai: "gpt-4.1-mini",
+  openrouter: "openai/gpt-4.1-mini",
+  gemini: "gemini-2.0-flash",
+  claude: "claude-3-5-sonnet-latest"
+};
+
 export function SitePages({ page, user, onNavigate }: SitePagesProps) {
+  const [byok, setByok] = useState<ByokSettings | null>(null);
+  const [byokLoading, setByokLoading] = useState(false);
+  const [byokError, setByokError] = useState<string | null>(null);
+  const [providerDraft, setProviderDraft] = useState<ByokProvider>("openai");
+  const [modelDraft, setModelDraft] = useState(BYOK_DEFAULT_MODELS.openai);
+  const [apiKeyDraft, setApiKeyDraft] = useState("");
+  const [byokSaving, setByokSaving] = useState(false);
+
+  useEffect(() => {
+    if (!user || page !== "account") {
+      return;
+    }
+    setByokLoading(true);
+    setByokError(null);
+    void settingsApi.getByok()
+      .then((response) => {
+        setByok(response.byok);
+        const nextProvider = response.byok.activeProvider ?? "openai";
+        setProviderDraft(nextProvider);
+        setModelDraft(
+          response.byok.providers[nextProvider].model ??
+            response.byok.activeModel ??
+            BYOK_DEFAULT_MODELS[nextProvider]
+        );
+      })
+      .catch((error) => {
+        const message = error instanceof ApiError ? error.message : "Failed to load BYOK settings";
+        setByokError(message);
+      })
+      .finally(() => setByokLoading(false));
+  }, [page, user]);
+
   const meta = SITE_PAGE_META[page];
+  const reloadByok = async (): Promise<void> => {
+    const response = await settingsApi.getByok();
+    setByok(response.byok);
+  };
+
+  const handleSaveByok = async (): Promise<void> => {
+    setByokSaving(true);
+    setByokError(null);
+    try {
+      await settingsApi.setByok({
+        provider: providerDraft,
+        apiKey: apiKeyDraft.trim() || undefined,
+        model: modelDraft.trim() || null,
+        setActive: true
+      });
+      setApiKeyDraft("");
+      await reloadByok();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Failed to save BYOK settings";
+      setByokError(message);
+    } finally {
+      setByokSaving(false);
+    }
+  };
+
+  const handleSetActiveProvider = async (provider: ByokProvider): Promise<void> => {
+    setByokSaving(true);
+    setByokError(null);
+    try {
+      const nextModel = byok?.providers[provider].model ?? BYOK_DEFAULT_MODELS[provider];
+      await settingsApi.setByok({
+        provider,
+        model: nextModel,
+        setActive: true
+      });
+      setProviderDraft(provider);
+      setModelDraft(nextModel);
+      await reloadByok();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Failed to switch active provider";
+      setByokError(message);
+    } finally {
+      setByokSaving(false);
+    }
+  };
+
+  const handleRemoveProvider = async (provider: ByokProvider): Promise<void> => {
+    setByokSaving(true);
+    setByokError(null);
+    try {
+      await settingsApi.clearByok({ provider });
+      await reloadByok();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Failed to remove provider key";
+      setByokError(message);
+    } finally {
+      setByokSaving(false);
+    }
+  };
+
   if (meta.access === "auth" && !user) {
     return (
       <PageGrid>
@@ -127,6 +235,145 @@ export function SitePages({ page, user, onNavigate }: SitePagesProps) {
             <Badge variant="secondary">Weekly digest: Enabled</Badge>
             <Badge variant="secondary">Product updates: Enabled</Badge>
             <Badge variant="secondary">Locale: en-US</Badge>
+          </div>
+        </Section>
+
+        <Section
+          title="Model Providers (BYOK)"
+          description="Configure and activate your own model keys. Runs use only your selected provider."
+        >
+          <div className="grid gap-3">
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Provider</Label>
+                <Select
+                  value={providerDraft}
+                  onValueChange={(value) => {
+                    const next = value as ByokProvider;
+                    setProviderDraft(next);
+                    setModelDraft(byok?.providers[next].model ?? BYOK_DEFAULT_MODELS[next]);
+                  }}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="openai">OpenAI</SelectItem>
+                    <SelectItem value="openrouter">OpenRouter</SelectItem>
+                    <SelectItem value="gemini">Gemini</SelectItem>
+                    <SelectItem value="claude">Claude</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="byok-model">Model</Label>
+                <Input
+                  id="byok-model"
+                  className="h-9"
+                  value={modelDraft}
+                  onChange={(event) => setModelDraft(event.target.value)}
+                  placeholder={BYOK_DEFAULT_MODELS[providerDraft]}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="byok-key">API Key</Label>
+              <Input
+                id="byok-key"
+                className="h-9"
+                value={apiKeyDraft}
+                onChange={(event) => setApiKeyDraft(event.target.value)}
+                placeholder="Paste provider key"
+                type="password"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                onClick={() => void handleSaveByok()}
+                disabled={byokSaving || modelDraft.trim().length === 0}
+              >
+                Save & set active
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setByokSaving(true);
+                  setByokError(null);
+                  void settingsApi.clearByok()
+                    .then(reloadByok)
+                    .catch((error) => {
+                      const message = error instanceof ApiError ? error.message : "Failed to clear keys";
+                      setByokError(message);
+                    })
+                    .finally(() => setByokSaving(false));
+                }}
+                disabled={byokSaving}
+              >
+                Clear all keys
+              </Button>
+              {byokLoading ? <Badge variant="secondary">Loading...</Badge> : null}
+              {byokError ? <Badge variant="destructive">{byokError}</Badge> : null}
+            </div>
+
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="h-10 px-3 text-xs">Provider</TableHead>
+                  <TableHead className="h-10 px-3 text-xs">Status</TableHead>
+                  <TableHead className="h-10 px-3 text-xs">Model</TableHead>
+                  <TableHead className="h-10 px-3 text-xs">Key</TableHead>
+                  <TableHead className="h-10 px-3 text-xs">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(["openai", "openrouter", "gemini", "claude"] as const).map((provider) => {
+                  const state = byok?.providers[provider] ?? {
+                    configured: false,
+                    keyHint: null,
+                    model: null,
+                    updatedAt: null
+                  };
+                  const isActive = byok?.activeProvider === provider;
+                  return (
+                    <TableRow key={provider}>
+                      <TableCell className="px-3 py-2 text-sm">{BYOK_PROVIDER_LABELS[provider]}</TableCell>
+                      <TableCell className="px-3 py-2 text-sm">
+                        {state.configured ? <Badge>Configured</Badge> : <Badge variant="outline">Not set</Badge>}
+                        {isActive ? <Badge className="ml-2">Active</Badge> : null}
+                      </TableCell>
+                      <TableCell className="px-3 py-2 text-sm">
+                        {state.model ?? BYOK_DEFAULT_MODELS[provider]}
+                      </TableCell>
+                      <TableCell className="px-3 py-2 text-sm">{state.keyHint ?? "-"}</TableCell>
+                      <TableCell className="px-3 py-2 text-sm">
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={!state.configured || isActive || byokSaving}
+                            onClick={() => void handleSetActiveProvider(provider)}
+                          >
+                            Use
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            disabled={!state.configured || byokSaving}
+                            onClick={() => void handleRemoveProvider(provider)}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </div>
         </Section>
       </PageGrid>

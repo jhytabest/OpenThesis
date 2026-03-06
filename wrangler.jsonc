@@ -26,6 +26,12 @@
       "migrations_dir": "migrations"
     }
   ],
+  "r2_buckets": [
+    {
+      "binding": "ALEXCLAW_ARTIFACTS",
+      "bucket_name": "alexclaw-artifacts"
+    }
+  ],
   "queues": {
     "producers": [
       {

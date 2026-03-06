@@ -52,6 +52,7 @@ export function ProjectsPage({
             <CardTitle className="text-base">Create Project</CardTitle>
             <CardDescription>
               Add a thesis text (minimum 30 chars). A run will start automatically.
+              Configure BYOK in Account Settings first.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">

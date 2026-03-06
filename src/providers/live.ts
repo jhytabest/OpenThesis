@@ -1,12 +1,15 @@
 import { zodToJsonSchema } from "zod-to-json-schema";
 import {
+  semanticScholarFieldsOfStudy,
   thesisSummarySchema,
   queryGenerationSchema,
   seedSelectionLlmSchema,
   seedSelectionSchema
 } from "../lib/zod-schemas.js";
+import { BYOK_DEFAULT_MODELS, isByokProvider } from "../lib/byok.js";
 import { LlmPrompts } from "../lib/prompts.js";
 import type {
+  ByokProvider,
   CandidatePaper,
   Env,
   Providers,
@@ -21,7 +24,7 @@ import {
   buildLiveSemanticScholarProvider
 } from "./scholarly.js";
 
-const openAiStrictSchema = (schema: ZodTypeAny, name: string): Record<string, unknown> => {
+const toJsonSchemaObject = (schema: ZodTypeAny, name: string): Record<string, unknown> => {
   const generated = zodToJsonSchema(schema, name) as {
     definitions?: Record<string, unknown>;
   };
@@ -56,7 +59,7 @@ const fetchJson = async <T>(
   }
 };
 
-const OPENAI_RESPONSE_TIMEOUT_MS = 180_000;
+const PROVIDER_RESPONSE_TIMEOUT_MS = 180_000;
 
 const sanitizeHttpUrl = (value: string | undefined): string | undefined => {
   if (!value) {
@@ -78,29 +81,21 @@ const sanitizeHttpUrl = (value: string | undefined): string | undefined => {
   }
 };
 
-const extractOutputText = (payload: {
-  output_text?: string;
-  output?: Array<{ content?: Array<{ type?: string; text?: string }> }>;
-}): string => {
-  if (typeof payload.output_text === "string" && payload.output_text.trim()) {
-    return payload.output_text;
+const extractJsonPayload = (raw: string): unknown => {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error("Provider response is empty");
   }
-  for (const item of payload.output ?? []) {
-    for (const content of item.content ?? []) {
-      if (content.type !== "output_text") {
-        continue;
-      }
-      if (typeof content.text === "string" && content.text.trim()) {
-        return content.text;
-      }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const first = trimmed.indexOf("{");
+    const last = trimmed.lastIndexOf("}");
+    if (first >= 0 && last > first) {
+      return JSON.parse(trimmed.slice(first, last + 1));
     }
+    throw new Error("Provider response does not contain valid JSON");
   }
-  throw new Error("OpenAI response did not return JSON text");
-};
-
-type OpenAiPromptConfig = {
-  id: string;
-  version?: string;
 };
 
 const formatIndexedCandidates = (candidates: CandidatePaper[]): string =>
@@ -151,93 +146,242 @@ const mapSeedSelectionByIndexToPaperIds = (
   });
 };
 
-const resolvePromptConfig = (
-  id: string | undefined,
-  version: string | undefined,
-  idEnvVar: string
-): OpenAiPromptConfig => {
-  const normalizedId = id?.trim();
-  if (!normalizedId) {
-    throw new Error(`${idEnvVar} is required in live mode`);
+const runOpenAiCompatibleChat = async (input: {
+  url: string;
+  apiKey: string;
+  model: string;
+  system: string;
+  user: string;
+  extraHeaders?: Record<string, string>;
+}): Promise<string> => {
+  const payload = await fetchJson<{
+    choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }>;
+  }>(
+    input.url,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${input.apiKey}`,
+        "content-type": "application/json",
+        ...(input.extraHeaders ?? {})
+      },
+      body: JSON.stringify({
+        model: input.model,
+        temperature: 0,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: input.system
+          },
+          {
+            role: "user",
+            content: input.user
+          }
+        ]
+      })
+    },
+    PROVIDER_RESPONSE_TIMEOUT_MS
+  );
+
+  const content = payload.choices?.[0]?.message?.content;
+  if (typeof content === "string" && content.trim()) {
+    return content;
   }
-  const normalizedVersion = version?.trim();
-  return normalizedVersion
-    ? { id: normalizedId, version: normalizedVersion }
-    : { id: normalizedId };
+  if (Array.isArray(content)) {
+    const text = content
+      .map((part) => (typeof part?.text === "string" ? part.text : ""))
+      .join("")
+      .trim();
+    if (text) {
+      return text;
+    }
+  }
+  throw new Error("Provider did not return message content");
+};
+
+const runAnthropicChat = async (input: {
+  apiKey: string;
+  model: string;
+  system: string;
+  user: string;
+}): Promise<string> => {
+  const payload = await fetchJson<{
+    content?: Array<{ type?: string; text?: string }>;
+  }>(
+    "https://api.anthropic.com/v1/messages",
+    {
+      method: "POST",
+      headers: {
+        "x-api-key": input.apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: input.model,
+        temperature: 0,
+        max_tokens: 2048,
+        system: input.system,
+        messages: [
+          {
+            role: "user",
+            content: input.user
+          }
+        ]
+      })
+    },
+    PROVIDER_RESPONSE_TIMEOUT_MS
+  );
+  const text = (payload.content ?? [])
+    .filter((part) => part.type === "text")
+    .map((part) => part.text ?? "")
+    .join("")
+    .trim();
+  if (!text) {
+    throw new Error("Anthropic response was empty");
+  }
+  return text;
+};
+
+const runGeminiChat = async (input: {
+  apiKey: string;
+  model: string;
+  system: string;
+  user: string;
+}): Promise<string> => {
+  const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${input.model}:generateContent`);
+  url.searchParams.set("key", input.apiKey);
+  const payload = await fetchJson<{
+    candidates?: Array<{
+      content?: {
+        parts?: Array<{ text?: string }>;
+      };
+    }>;
+  }>(
+    url.toString(),
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        generationConfig: {
+          temperature: 0,
+          responseMimeType: "application/json"
+        },
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                text: `${input.system}\n\n${input.user}`
+              }
+            ]
+          }
+        ]
+      })
+    },
+    PROVIDER_RESPONSE_TIMEOUT_MS
+  );
+  const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("").trim() ?? "";
+  if (!text) {
+    throw new Error("Gemini response was empty");
+  }
+  return text;
+};
+
+const runProviderPrompt = async (input: {
+  provider: ByokProvider;
+  apiKey: string;
+  model: string;
+  system: string;
+  user: string;
+}): Promise<string> => {
+  if (input.provider === "openai") {
+    return runOpenAiCompatibleChat({
+      url: "https://api.openai.com/v1/chat/completions",
+      apiKey: input.apiKey,
+      model: input.model,
+      system: input.system,
+      user: input.user
+    });
+  }
+  if (input.provider === "openrouter") {
+    return runOpenAiCompatibleChat({
+      url: "https://openrouter.ai/api/v1/chat/completions",
+      apiKey: input.apiKey,
+      model: input.model,
+      system: input.system,
+      user: input.user
+    });
+  }
+  if (input.provider === "claude") {
+    return runAnthropicChat({
+      apiKey: input.apiKey,
+      model: input.model,
+      system: input.system,
+      user: input.user
+    });
+  }
+  return runGeminiChat({
+    apiKey: input.apiKey,
+    model: input.model,
+    system: input.system,
+    user: input.user
+  });
+};
+
+const buildTaskSystemPrompt = (input: {
+  taskInstruction: string;
+  schema: Record<string, unknown>;
+}): string => {
+  const schemaJson = JSON.stringify(input.schema);
+  return [
+    "You are an academic research assistant.",
+    input.taskInstruction,
+    "Return only valid JSON and no markdown.",
+    `JSON schema: ${schemaJson}`
+  ].join("\n");
 };
 
 const buildLiveReasoningProvider = (env: Env) => {
-  const apiKey = env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is required in live mode");
+  if (!isByokProvider(env.BYOK_PROVIDER)) {
+    throw new Error("BYOK_PROVIDER is required in live mode");
   }
-
-  const thesisSummaryPrompt = resolvePromptConfig(
-    env.OPENAI_PROMPT_ID_THESIS_SUMMARY,
-    env.OPENAI_PROMPT_VERSION_THESIS_SUMMARY,
-    "OPENAI_PROMPT_ID_THESIS_SUMMARY"
-  );
-  const queryGenerationPrompt = resolvePromptConfig(
-    env.OPENAI_PROMPT_ID_QUERY_GENERATION,
-    env.OPENAI_PROMPT_VERSION_QUERY_GENERATION,
-    "OPENAI_PROMPT_ID_QUERY_GENERATION"
-  );
-  const seedSelectionPrompt = resolvePromptConfig(
-    env.OPENAI_PROMPT_ID_SEED_SELECTION,
-    env.OPENAI_PROMPT_VERSION_SEED_SELECTION,
-    "OPENAI_PROMPT_ID_SEED_SELECTION"
-  );
+  const provider = env.BYOK_PROVIDER;
+  const apiKey = env.BYOK_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("BYOK_API_KEY is required in live mode");
+  }
+  const model = env.BYOK_MODEL?.trim() || BYOK_DEFAULT_MODELS[provider];
 
   const runStructuredPrompt = async <T>(input: {
-    name: string;
     schema: Record<string, unknown>;
     user: string;
-    prompt: OpenAiPromptConfig;
+    taskInstruction: string;
     parse: (value: unknown) => T;
   }): Promise<T> => {
-    const requestBody: Record<string, unknown> = {
-      prompt: input.prompt.version
-        ? { id: input.prompt.id, version: input.prompt.version }
-        : { id: input.prompt.id },
-      input: input.user
-    };
-
-    requestBody.text = {
-      format: {
-        type: "json_schema",
-        strict: true,
-        name: input.name,
+    const output = await runProviderPrompt({
+      provider,
+      apiKey,
+      model,
+      system: buildTaskSystemPrompt({
+        taskInstruction: input.taskInstruction,
         schema: input.schema
-      }
-    };
-
-    const payload = await fetchJson<{
-      output_text?: string;
-      output?: Array<{ content?: Array<{ type?: string; text?: string }> }>;
-    }>(
-      "https://api.openai.com/v1/responses",
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${apiKey}`,
-          "content-type": "application/json"
-        },
-        body: JSON.stringify(requestBody)
-      },
-      OPENAI_RESPONSE_TIMEOUT_MS
-    );
-
-    const parsed = JSON.parse(extractOutputText(payload));
+      }),
+      user: input.user
+    });
+    const parsed = extractJsonPayload(output);
     return input.parse(parsed);
   };
 
   return {
     async summarizeThesis(thesisText: string): Promise<ThesisSummary> {
       return runStructuredPrompt({
-        name: "summary",
-        schema: openAiStrictSchema(thesisSummarySchema, "summary"),
+        schema: toJsonSchemaObject(thesisSummarySchema, "summary"),
         user: LlmPrompts.thesisSummaryUser(thesisText),
-        prompt: thesisSummaryPrompt,
+        taskInstruction:
+          "Summarize the thesis text and output keys thesis_title and thesis_summary. Keep an academic tone and preserve business-domain context.",
         parse: (value) => thesisSummarySchema.parse(value)
       });
     },
@@ -247,27 +391,33 @@ const buildLiveReasoningProvider = (env: Env) => {
       thesisSummary: string;
     }): Promise<QueryGeneration> {
       return runStructuredPrompt({
-        name: "query",
-        schema: openAiStrictSchema(queryGenerationSchema, "query"),
+        schema: toJsonSchemaObject(queryGenerationSchema, "query"),
         user: LlmPrompts.queryGenerationUser({
           thesisTitle: input.thesisTitle,
           thesisSummary: input.thesisSummary
         }),
-        prompt: queryGenerationPrompt,
+        taskInstruction: [
+          "Generate 6 to 10 unique search terms for academic literature discovery.",
+          "Each term must be 1 to 4 words with alphanumeric tokens and optional hyphens.",
+          `fields_of_study must be chosen from: ${semanticScholarFieldsOfStudy.join(", ")}.`
+        ].join(" "),
         parse: (value) => queryGenerationSchema.parse(value)
       });
     },
 
     async selectSeeds(input: SelectSeedsInput): Promise<SeedSelection> {
       return runStructuredPrompt({
-        name: "selection",
-        schema: openAiStrictSchema(seedSelectionLlmSchema, "selection"),
+        schema: toJsonSchemaObject(seedSelectionLlmSchema, "selection"),
         user: LlmPrompts.seedSelectionUser({
           thesisTitle: input.thesisTitle,
           thesisSummary: input.thesisSummary,
           candidatesJson: formatIndexedCandidates(input.candidates)
         }),
-        prompt: seedSelectionPrompt,
+        taskInstruction: [
+          "Choose candidate_indices for the strongest foundational papers only.",
+          "If none are suitable return outcome empty and candidate_indices as [].",
+          "If selected, include 1 to 5 unique indices from the provided candidate list."
+        ].join(" "),
         parse: (value) => {
           const parsed = seedSelectionLlmSchema.parse(value);
           return mapSeedSelectionByIndexToPaperIds(parsed, input.candidates);

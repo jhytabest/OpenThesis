@@ -1,4 +1,8 @@
 export type RunStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+export type RunType = "RESEARCH" | "THESIS_ASSISTANT" | "DATASET_ANALYSIS";
+export type ContextStatus = "CURRENT" | "STALE";
+export type SourceDocumentKind = "GOOGLE_DOC" | "GOOGLE_SHEET" | "PDF" | "CSV" | "XLSX";
+export type ByokProvider = "openai" | "openrouter" | "gemini" | "claude";
 
 export interface SessionUser {
   id: string;
@@ -18,6 +22,8 @@ export interface ProjectListItem {
   latestRun: {
     id: string;
     status: RunStatus | null;
+    runType: RunType | null;
+    contextStatus: ContextStatus | null;
     updatedAt: string | null;
   } | null;
   counts: {
@@ -40,6 +46,9 @@ export interface ProjectDetail {
   latestRun: {
     id: string;
     status: RunStatus;
+    runType: RunType;
+    contextStatus: ContextStatus;
+    inputSnapshotHash: string | null;
     error: string | null;
     updatedAt: string;
   } | null;
@@ -64,6 +73,9 @@ export interface CreateProjectResponse {
   run: {
     id: string;
     status: RunStatus;
+    runType: RunType;
+    contextStatus: ContextStatus;
+    inputSnapshotHash: string | null;
     createdAt: string;
   };
 }
@@ -82,10 +94,18 @@ export interface UpdateProjectResponse {
   };
 }
 
+export interface CreateRunRequest {
+  runType?: RunType;
+  snapshotPolicy?: "LATEST_FROZEN";
+}
+
 export interface CreateRunResponse {
   run: {
     id: string;
     status: RunStatus;
+    runType: RunType;
+    contextStatus: ContextStatus;
+    inputSnapshotHash: string | null;
     createdAt: string;
   };
 }
@@ -112,6 +132,9 @@ export interface ProjectDashboard {
   latestRun: {
     id: string;
     status: RunStatus;
+    runType: RunType;
+    contextStatus: ContextStatus;
+    inputSnapshotHash: string | null;
     error: string | null;
     updatedAt: string;
   } | null;
@@ -119,6 +142,170 @@ export interface ProjectDashboard {
 
 export interface ProjectDashboardResponse {
   dashboard: ProjectDashboard;
+}
+
+export interface ByokSettings {
+  activeProvider: ByokProvider | null;
+  activeModel: string | null;
+  providers: Record<ByokProvider, {
+    configured: boolean;
+    keyHint: string | null;
+    model: string | null;
+    updatedAt: string | null;
+  }>;
+}
+
+export interface GetByokResponse {
+  byok: ByokSettings;
+}
+
+export interface SetByokRequest {
+  provider: ByokProvider;
+  apiKey?: string;
+  model?: string | null;
+  setActive?: boolean;
+}
+
+export interface ClearByokRequest {
+  provider?: ByokProvider;
+}
+
+export interface GoogleIntegrationStatusResponse {
+  integration: {
+    connected: boolean;
+    accountEmail: string | null;
+    scopes: string[];
+    updatedAt: string | null;
+  };
+  root: {
+    rootFolderId: string;
+    pullFolderId: string;
+    pushFolderId: string;
+    updatedAt: string;
+  } | null;
+}
+
+export interface SetGoogleRootRequest {
+  rootFolderId: string;
+  pullFolderId: string;
+  pushFolderId: string;
+}
+
+export interface ProjectSourceDocument {
+  id: string;
+  googleFileId: string;
+  kind: SourceDocumentKind;
+  role: string | null;
+  title: string | null;
+  mimeType: string | null;
+  includeInRuns: boolean;
+  isDesignatedThesisDoc: boolean;
+  active: boolean;
+  latestSnapshotId: string | null;
+  latestSnapshotCreatedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListSourceDocumentsResponse {
+  documents: ProjectSourceDocument[];
+}
+
+export interface PatchSourceDocumentRequest {
+  role?: string | null;
+  includeInRuns?: boolean;
+  isDesignatedThesisDoc?: boolean;
+  active?: boolean;
+}
+
+export interface DocumentSnapshot {
+  id: string;
+  revisionRef: string;
+  checksum: string;
+  sizeBytes: number;
+  storageKey: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface ListDocumentSnapshotsResponse {
+  snapshots: DocumentSnapshot[];
+}
+
+export interface TriggerSyncResponse {
+  sync: {
+    syncEventId: string;
+    imported: number;
+    updatedSnapshots: number;
+    staleRunsMarked: boolean;
+  };
+}
+
+export interface ProjectRunListItem {
+  id: string;
+  status: RunStatus;
+  runType: RunType;
+  contextStatus: ContextStatus;
+  inputSnapshotHash: string | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListProjectRunsResponse {
+  runs: ProjectRunListItem[];
+}
+
+export interface ProjectRunDetailResponse {
+  run: ProjectRunListItem;
+  inputs: Array<{
+    snapshotId: string;
+    sourceDocumentId: string;
+    documentTitle: string | null;
+    kind: SourceDocumentKind;
+    revisionRef: string;
+    checksum: string;
+    createdAt: string;
+  }>;
+  steps: Array<{
+    id: string;
+    name: string;
+    status: string;
+    attempt: number;
+    startedAt: string;
+    finishedAt: string | null;
+    error: string | null;
+  }>;
+  comments: Array<{
+    id: string;
+    sourceDocumentId: string;
+    sectionLabel: string;
+    googleCommentId: string | null;
+    status: "POSTED" | "FAILED";
+    error: string | null;
+    createdAt: string;
+  }>;
+}
+
+export interface RunAuditEventsResponse {
+  events: Array<{
+    id: string;
+    eventType: string;
+    detail: Record<string, unknown>;
+    createdAt: string;
+  }>;
+}
+
+export interface RunArtifactsResponse {
+  artifacts: Array<{
+    id: string;
+    runId: string;
+    artifactType: string;
+    title: string;
+    storageKey: string;
+    metadata: Record<string, unknown> | null;
+    createdAt: string;
+  }>;
 }
 
 export interface ProjectPaper {

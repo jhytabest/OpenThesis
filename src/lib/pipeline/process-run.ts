@@ -2,6 +2,10 @@ import { Db } from "../db.js";
 import { HubDb } from "../hub-db.js";
 import { scorePaper } from "../scoring.js";
 import { seedSelectionSchema } from "../zod-schemas.js";
+import { BYOK_DEFAULT_MODELS } from "../byok.js";
+import { Encrypt } from "../crypto.js";
+import { Storage } from "../storage.js";
+import { WorkspaceService } from "../workspace-service.js";
 import type {
   CanonicalPaper,
   Env,
@@ -45,8 +49,74 @@ const buildInternalCitationLinks = (papers: CanonicalPaper[]): PaperCitation[] =
   );
 };
 
+const buildSectionBundles = (input: {
+  thesisTitle: string;
+  thesisSummary: string;
+  scoredPapers: Array<{ title: string; totalScore: number }>;
+}): Array<{
+  section: string;
+  claims: string[];
+  evidence: string[];
+  gaps: string[];
+  nextActions: string[];
+}> => {
+  const topPapers = [...input.scoredPapers]
+    .sort((left, right) => right.totalScore - left.totalScore)
+    .slice(0, 5);
+
+  return [
+    {
+      section: "Introduction and Problem Framing",
+      claims: [
+        `Refine the research question for "${input.thesisTitle}" around measurable business outcomes.`,
+        "Clarify scope boundaries and strategic relevance."
+      ],
+      evidence: topPapers.slice(0, 2).map((paper) => paper.title),
+      gaps: [
+        "Operational definition of key business constructs is incomplete.",
+        "A short stakeholder map is missing."
+      ],
+      nextActions: [
+        "Add one paragraph defining dependent and independent variables.",
+        "Add one paragraph on managerial implications."
+      ]
+    },
+    {
+      section: "Literature Synthesis",
+      claims: [
+        "Organize literature into competing schools of thought.",
+        "Explicitly separate foundational vs recent empirical contributions."
+      ],
+      evidence: topPapers.map((paper) => paper.title),
+      gaps: [
+        "Missing explicit contradiction mapping between major studies.",
+        "Limited critical discussion of context transferability."
+      ],
+      nextActions: [
+        "Create a 2x2 synthesis matrix (theory x evidence strength).",
+        "Add a subsection for limitations in existing business literature."
+      ]
+    },
+    {
+      section: "Method and Analysis Alignment",
+      claims: [
+        "Ensure method claims are proportionate to available dataset quality.",
+        "Strengthen validity discussion for light-weight business analyses."
+      ],
+      evidence: topPapers.slice(0, 3).map((paper) => paper.title),
+      gaps: [
+        "Operationalization details for variables are incomplete.",
+        "Threats-to-validity section needs stronger justification."
+      ],
+      nextActions: [
+        "Document variable coding decisions in a reproducibility note.",
+        "Add a short robustness-check section for the final draft."
+      ]
+    }
+  ];
+};
+
 export async function processRun(env: Env, runId: string): Promise<void> {
-  const providers = buildProviders(env);
   const run = await Db.getRunById(env.ALEXCLAW_DB, runId);
   if (!run) {
     throw new Error(`Run ${runId} not found`);
@@ -57,6 +127,81 @@ export async function processRun(env: Env, runId: string): Promise<void> {
     return;
   }
 
+  if (!env.ENCRYPTION_KEY?.trim()) {
+    await Db.updateRunStatus(env.ALEXCLAW_DB, runId, "FAILED", "ENCRYPTION_KEY is not configured");
+    await Db.addRunAuditEvent(env.ALEXCLAW_DB, {
+      runId,
+      eventType: "RUN_FAILED",
+      detail: {
+        runType: run.run_type,
+        contextStatus: run.context_status,
+        failedAt: new Date().toISOString(),
+        error: "ENCRYPTION_KEY is not configured"
+      }
+    });
+    return;
+  }
+
+  const credential = await Db.getResolvedUserLlmCredential(env.ALEXCLAW_DB, run.user_id);
+  if (!credential) {
+    await Db.updateRunStatus(env.ALEXCLAW_DB, runId, "FAILED", "BYOK is not configured for this user");
+    await Db.addRunAuditEvent(env.ALEXCLAW_DB, {
+      runId,
+      eventType: "RUN_FAILED",
+      detail: {
+        runType: run.run_type,
+        contextStatus: run.context_status,
+        failedAt: new Date().toISOString(),
+        error: "BYOK is not configured for this user"
+      }
+    });
+    return;
+  }
+
+  let resolvedApiKey: string;
+  try {
+    resolvedApiKey = await Encrypt.decrypt(env.ENCRYPTION_KEY, credential.encrypted_key);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await Db.updateRunStatus(env.ALEXCLAW_DB, runId, "FAILED", `Failed to decrypt BYOK key: ${message}`);
+    await Db.addRunAuditEvent(env.ALEXCLAW_DB, {
+      runId,
+      eventType: "RUN_FAILED",
+      detail: {
+        runType: run.run_type,
+        contextStatus: run.context_status,
+        failedAt: new Date().toISOString(),
+        error: `Failed to decrypt BYOK key: ${message}`
+      }
+    });
+    return;
+  }
+
+  const activeModel = credential.model ?? BYOK_DEFAULT_MODELS[credential.provider];
+  let providers: ReturnType<typeof buildProviders>;
+  try {
+    providers = buildProviders({
+      ...env,
+      BYOK_PROVIDER: credential.provider,
+      BYOK_API_KEY: resolvedApiKey,
+      BYOK_MODEL: activeModel
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await Db.updateRunStatus(env.ALEXCLAW_DB, runId, "FAILED", `Provider initialization failed: ${message}`);
+    await Db.addRunAuditEvent(env.ALEXCLAW_DB, {
+      runId,
+      eventType: "RUN_FAILED",
+      detail: {
+        runType: run.run_type,
+        contextStatus: run.context_status,
+        failedAt: new Date().toISOString(),
+        error: `Provider initialization failed: ${message}`
+      }
+    });
+    return;
+  }
+
   const thesis = await Db.getThesisOwned(env.ALEXCLAW_DB, run.thesis_id, run.user_id);
   if (!thesis) {
     await Db.updateRunStatus(env.ALEXCLAW_DB, runId, "FAILED", "Thesis not found for run owner");
@@ -64,6 +209,15 @@ export async function processRun(env: Env, runId: string): Promise<void> {
   }
 
   await Db.clearRunData(env.ALEXCLAW_DB, runId);
+  await Db.addRunAuditEvent(env.ALEXCLAW_DB, {
+    runId,
+    eventType: "RUN_STARTED",
+    detail: {
+      runType: run.run_type,
+      contextStatus: run.context_status,
+      startedAt: new Date().toISOString()
+    }
+  });
 
   try {
     const thesisSummary = await runStep(env, runId, "llm_thesis_summary", () =>
@@ -87,7 +241,7 @@ export async function processRun(env: Env, runId: string): Promise<void> {
       runId,
       entityType: "run",
       entityId: runId,
-      source: "openai.thesis_summary",
+      source: `${credential.provider}.thesis_summary`,
       detail: thesisSummary
     });
     await HubDb.upsertProjectMemoryDoc(env.ALEXCLAW_DB, {
@@ -114,7 +268,7 @@ export async function processRun(env: Env, runId: string): Promise<void> {
       runId,
       entityType: "run",
       entityId: runId,
-      source: "openai.query_generation",
+      source: `${credential.provider}.query_generation`,
       detail: queryGeneration
     });
 
@@ -272,7 +426,7 @@ export async function processRun(env: Env, runId: string): Promise<void> {
       runId,
       entityType: "run",
       entityId: runId,
-      source: "openai.seed_selection",
+      source: `${credential.provider}.seed_selection`,
       detail: {
         ...seedSelection,
         selectedCount: selectedSeedCandidates.length,
@@ -457,10 +611,116 @@ export async function processRun(env: Env, runId: string): Promise<void> {
       source: "system"
     });
 
+    const sectionBundles = buildSectionBundles({
+      thesisTitle: thesisSummary.thesis_title,
+      thesisSummary: thesisSummary.thesis_summary,
+      scoredPapers: scoredSummary.map((paper) => ({
+        title: paper.title,
+        totalScore: paper.totalScore
+      }))
+    });
+    const runManifest = {
+      runId,
+      projectId: run.thesis_id,
+      runType: run.run_type,
+      status: "COMPLETED",
+      generatedAt: new Date().toISOString(),
+      seedCount: canonicalSeeds.length,
+      paperCount: allPapers.length,
+      citationCount: citationLinks.length,
+      sectionBundleCount: sectionBundles.length
+    };
+
+    try {
+      const sectionBundleStorageKey = `projects/${run.thesis_id}/runs/${runId}/section_bundles.json`;
+      await Storage.putJson(env, sectionBundleStorageKey, sectionBundles);
+      await Db.addRunArtifact(env.ALEXCLAW_DB, {
+        runId,
+        artifactType: "SECTION_BUNDLE",
+        title: "Section bundles",
+        storageKey: sectionBundleStorageKey,
+        metadata: {
+          sections: sectionBundles.map((section) => section.section)
+        }
+      });
+
+      const manifestStorageKey = `projects/${run.thesis_id}/runs/${runId}/manifest.json`;
+      await Storage.putJson(env, manifestStorageKey, runManifest);
+      await Db.addRunArtifact(env.ALEXCLAW_DB, {
+        runId,
+        artifactType: "RUN_MANIFEST",
+        title: "Run manifest",
+        storageKey: manifestStorageKey,
+        metadata: runManifest
+      });
+
+      await Db.addRunAuditEvent(env.ALEXCLAW_DB, {
+        runId,
+        eventType: "ARTIFACT_EXPORTED",
+        detail: {
+          sectionBundleStorageKey,
+          manifestStorageKey
+        }
+      });
+    } catch (artifactError) {
+      await Db.addRunAuditEvent(env.ALEXCLAW_DB, {
+        runId,
+        eventType: "ARTIFACT_EXPORT_FAILED",
+        detail: {
+          warning: "Artifact storage export failed",
+          error: artifactError instanceof Error ? artifactError.message : String(artifactError)
+        }
+      });
+    }
+
+    if (run.run_type === "THESIS_ASSISTANT") {
+      await WorkspaceService.postSectionCommentsToDesignatedDocs({
+        env,
+        runId,
+        projectId: run.thesis_id,
+        userId: run.user_id,
+        sectionBundles
+      });
+
+      const auditEvents = await Db.listRunAuditEventsOwned(env.ALEXCLAW_DB, runId, run.user_id);
+      await WorkspaceService.exportRunBundleToDrive({
+        env,
+        runId,
+        projectId: run.thesis_id,
+        userId: run.user_id,
+        bundle: {
+          manifest: runManifest,
+          sectionBundles,
+          auditEvents: auditEvents.map((event) => ({
+            id: event.id,
+            eventType: event.event_type,
+            detail: event.detail_json,
+            createdAt: event.created_at
+          }))
+        }
+      });
+    }
+
     await Db.updateRunStatus(env.ALEXCLAW_DB, runId, "COMPLETED");
+    await Db.addRunAuditEvent(env.ALEXCLAW_DB, {
+      runId,
+      eventType: "RUN_COMPLETED",
+      detail: {
+        completedAt: new Date().toISOString(),
+        runType: run.run_type
+      }
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await Db.updateRunStatus(env.ALEXCLAW_DB, runId, "FAILED", message);
+    await Db.addRunAuditEvent(env.ALEXCLAW_DB, {
+      runId,
+      eventType: "RUN_FAILED",
+      detail: {
+        failedAt: new Date().toISOString(),
+        error: message
+      }
+    });
     console.error("run failed", { runId, error: message });
   }
 }

@@ -27,6 +27,9 @@ export const dashboardRepo = {
     latestRun: {
       id: string;
       status: RunStatus;
+      runType: "RESEARCH" | "THESIS_ASSISTANT" | "DATASET_ANALYSIS";
+      contextStatus: "CURRENT" | "STALE";
+      inputSnapshotHash: string | null;
       error: string | null;
       updatedAt: string;
     } | null;
@@ -103,6 +106,9 @@ export const dashboardRepo = {
         ? {
             id: latestRun.id,
             status: latestRun.status,
+            runType: latestRun.run_type,
+            contextStatus: latestRun.context_status,
+            inputSnapshotHash: latestRun.input_snapshot_hash,
             error: latestRun.error,
             updatedAt: latestRun.updated_at
           }

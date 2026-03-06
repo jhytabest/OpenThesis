@@ -1,4 +1,4 @@
-import type { RunStatus } from "../types.js";
+import type { ContextStatus, RunStatus, RunType, SourceDocumentKind } from "../types.js";
 
 export interface ProjectListRow {
   id: string;
@@ -7,6 +7,8 @@ export interface ProjectListRow {
   created_at: string;
   latest_run_id: string | null;
   latest_run_status: RunStatus | null;
+  latest_run_type: RunType | null;
+  latest_run_context_status: ContextStatus | null;
   latest_run_updated_at: string | null;
   paper_count: number;
   reading_count: number;
@@ -66,4 +68,19 @@ export interface ProjectContext {
     bookmarked: boolean;
     inReadingList: boolean;
   }>;
+}
+
+export interface SourceDocumentRow {
+  id: string;
+  project_id: string;
+  google_file_id: string;
+  kind: SourceDocumentKind;
+  role: string | null;
+  title: string | null;
+  mime_type: string | null;
+  include_in_runs: number;
+  is_designated_thesis_doc: number;
+  active: number;
+  created_at: string;
+  updated_at: string;
 }

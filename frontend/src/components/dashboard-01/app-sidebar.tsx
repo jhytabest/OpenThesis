@@ -14,7 +14,10 @@ import {
   LayoutDashboardIcon,
   LifeBuoyIcon,
   MessageSquareIcon,
+  NotebookPenIcon,
+  OrbitIcon,
   PlusCircleIcon,
+  ScrollTextIcon,
   SettingsIcon,
   ShieldCheckIcon,
   ShieldIcon,
@@ -58,6 +61,11 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const sections: Array<{ key: ProjectSection; title: string; icon: React.ComponentType<{ className?: string }> }> = [
     { key: "dashboard", title: "Dashboard", icon: LayoutDashboardIcon },
+    { key: "documents", title: "Documents", icon: FileTextIcon },
+    { key: "runs", title: "Runs", icon: OrbitIcon },
+    { key: "workbench", title: "Workbench", icon: NotebookPenIcon },
+    { key: "datasets", title: "Datasets", icon: DatabaseIcon },
+    { key: "audit", title: "Audit", icon: ScrollTextIcon },
     { key: "papers", title: "Papers", icon: BookOpenIcon },
     { key: "chats", title: "Chats", icon: MessageSquareIcon },
     { key: "memory", title: "Memory", icon: BrainCircuitIcon },

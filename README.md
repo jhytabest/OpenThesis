@@ -12,8 +12,9 @@ Production-oriented MVP for thesis-to-paper-graph using:
 - Google OAuth login + secure session cookie auth
 - Ownership checks on all thesis/run routes
 - Thesis intake and asynchronous run creation
+- Fully BYOK LLM runtime (OpenAI / OpenRouter / Gemini / Claude)
 - Pipeline with:
-  - OpenAI Responses API strict-JSON steps
+  - Provider-agnostic structured JSON reasoning steps
   - OpenAlex search (Semantic Scholar fallback on OpenAlex quota/rate exhaustion)
   - OpenAlex canonicalization + one-generation graph expansion
   - Relevance scoring and ranking
@@ -31,7 +32,7 @@ Production-oriented MVP for thesis-to-paper-graph using:
 - `src/lib/pipeline.ts`: end-to-end run pipeline
 - `src/lib/prompts.ts`: centralized LLM prompts/templates
 - `src/providers/scholarly.ts`: centralized OpenAlex + Semantic Scholar call assembly
-- `src/providers/live.ts`: live provider adapters (OpenAI + Unpaywall, plus scholarly provider wiring)
+- `src/providers/live.ts`: live provider adapters (BYOK reasoning + Unpaywall + scholarly provider wiring)
 - `frontend/src/App.tsx`: frontend app shell + auth-aware routing
 - `frontend/src/lib/api/*`: typed browser API client modules
 - `vite.config.ts`: frontend build configuration
@@ -86,8 +87,8 @@ Run the real external workflow locally (no mock provider) with thesis fixtures:
 
 ```bash
 cp .env.example .env
-# fill OPENAI_API_KEY, OPENALEX_API_KEY, and SEMANTIC_SCHOLAR_API_KEY for fallback (plus optionally UNPAYWALL_EMAIL)
-# required: set OPENAI_PROMPT_ID_THESIS_SUMMARY / OPENAI_PROMPT_ID_QUERY_GENERATION / OPENAI_PROMPT_ID_SEED_SELECTION
+# fill BYOK_PROVIDER, BYOK_API_KEY, OPENALEX_API_KEY, and SEMANTIC_SCHOLAR_API_KEY (plus optionally UNPAYWALL_EMAIL)
+# for app runtime, BYOK is configured per user in Account settings
 npm run debug:live -- --list
 npm run debug:live -- --thesis-id deeptech-team-composition
 npm run debug:live:all
@@ -107,23 +108,14 @@ The runner applies retries with adaptive backoff for transient failures and API 
 1. Set secrets:
 
 ```bash
-wrangler secret put OPENAI_API_KEY
 wrangler secret put GOOGLE_CLIENT_ID
 wrangler secret put GOOGLE_CLIENT_SECRET
+wrangler secret put ENCRYPTION_KEY
 wrangler secret put INTERNAL_API_TOKEN
 wrangler secret put SEMANTIC_SCHOLAR_API_KEY
 wrangler secret put OPENALEX_API_KEY
 wrangler secret put UNPAYWALL_EMAIL
 ```
-
-Prompt configs (non-secret, set as vars) to use saved OpenAI prompts with direct `input` text:
-
-- `OPENAI_PROMPT_ID_THESIS_SUMMARY`
-- `OPENAI_PROMPT_VERSION_THESIS_SUMMARY` (optional; omit to use current published version)
-- `OPENAI_PROMPT_ID_QUERY_GENERATION`
-- `OPENAI_PROMPT_VERSION_QUERY_GENERATION` (optional; omit to use current published version)
-- `OPENAI_PROMPT_ID_SEED_SELECTION`
-- `OPENAI_PROMPT_VERSION_SEED_SELECTION` (optional; omit to use current published version)
 
 2. Deploy (runs remote D1 migrations automatically, then deploys):
 
@@ -138,6 +130,7 @@ Configured in `wrangler.jsonc`:
 - `ALEXCLAW_DB`: D1 database binding
 - `ALEXCLAW_RUN_QUEUE`: queue producer binding
 - `ALEXCLAW_ENRICH_QUEUE`: queue producer binding
+- `ALEXCLAW_ARTIFACTS`: R2 bucket binding for snapshot/run artifacts
 - queue consumer for `alexclaw-runs`
 - queue consumer for `alexclaw-enrichment` (asynchronous Unpaywall enrichment)
 - `ALEXCLAW_RUN_WORKFLOW`: workflow binding (`AlexclawRunWorkflow` class)
@@ -151,6 +144,12 @@ Auth:
 - `GET /api/auth/me`
 - `POST /api/auth/logout`
 
+Settings:
+
+- `GET /api/settings/byok`
+- `PUT /api/settings/byok`
+- `DELETE /api/settings/byok`
+
 Core:
 
 - `GET /api/projects`
@@ -159,9 +158,24 @@ Core:
 - `PATCH /api/projects/:projectId`
 - `DELETE /api/projects/:projectId`
 - `POST /api/projects/:projectId/runs`
+- `GET /api/projects/:projectId/runs`
+- `GET /api/projects/:projectId/runs/:runId`
+- `GET /api/projects/:projectId/runs/:runId/audit`
+- `GET /api/projects/:projectId/runs/:runId/artifacts`
 - `GET /api/projects/:projectId/dashboard`
 - `GET /api/projects/:projectId/memory-docs`
 - `PATCH /api/projects/:projectId/memory-docs/:docKey`
+
+Workspace:
+
+- `GET /api/projects/:projectId/integrations/google`
+- `GET /api/projects/:projectId/integrations/google/connect`
+- `GET /api/projects/:projectId/integrations/google/callback`
+- `POST /api/projects/:projectId/integrations/google/root`
+- `POST /api/projects/:projectId/sync`
+- `GET /api/projects/:projectId/documents`
+- `PATCH /api/projects/:projectId/documents/:documentId`
+- `GET /api/projects/:projectId/documents/:documentId/snapshots`
 
 Chats:
 

@@ -3,30 +3,33 @@ import { Db } from "../lib/db.js";
 import { OAuth } from "../lib/oauth.js";
 import { json, type App } from "./shared.js";
 
+const OAUTH_STATE_COOKIE = "oauth_state";
+
 export function registerAuthRoutes(app: App): void {
   app.get("/auth/google", async (c) => {
-    if (!OAuth.isConfigured(c.env)) {
+    if (!OAuth.isGoogleConfigured(c.env)) {
       return json({ error: "Google OAuth is not configured" }, 503);
     }
 
-    const callbackUrl = OAuth.resolveGoogleCallbackUrl(c.req.url);
+    const callbackUrl = OAuth.resolveGoogleAuthCallbackUrl(c.req.url);
     const state = Auth.randomToken();
+
     c.header(
       "Set-Cookie",
       Auth.toSetCookie({
-        name: "oauth_state",
+        name: OAUTH_STATE_COOKIE,
         value: state,
         maxAge: 600,
         secure: true
       })
     );
-
-    return c.redirect(OAuth.buildGoogleAuthorizationUrl(c.env, state, callbackUrl));
+    const authUrl = OAuth.buildGoogleAuthAuthorizationUrl(c.env, { state, callbackUrl });
+    return c.redirect(authUrl);
   });
 
   app.get("/auth/google/callback", async (c) => {
     try {
-      if (!OAuth.isConfigured(c.env)) {
+      if (!OAuth.isGoogleConfigured(c.env)) {
         return json({ error: "Google OAuth is not configured" }, 503);
       }
 
@@ -37,24 +40,24 @@ export function registerAuthRoutes(app: App): void {
       }
 
       const cookies = Auth.parseCookies(c.req.header("cookie"));
-      const expectedState = cookies.oauth_state;
+      const expectedState = cookies[OAUTH_STATE_COOKIE];
       if (!expectedState || expectedState !== state) {
         return json({ error: "Invalid OAuth state" }, 400);
       }
 
-      const callbackUrl = OAuth.resolveGoogleCallbackUrl(c.req.url);
-      const token = await OAuth.exchangeGoogleCode(c.env, code, callbackUrl);
+      const callbackUrl = OAuth.resolveGoogleAuthCallbackUrl(c.req.url);
+      const token = await OAuth.exchangeGoogleCode(c.env, {
+        code,
+        callbackUrl
+      });
       const profile = await OAuth.fetchGoogleProfile(token.access_token);
 
-      if (!profile.sub || !profile.email) {
+      if (!profile.email) {
         return json({ error: "Google profile missing required fields" }, 400);
-      }
-      if (profile.email_verified !== true) {
-        return json({ error: "Google account email must be verified" }, 403);
       }
 
       const user = await Db.createOrUpdateGoogleUser(c.env.ALEXCLAW_DB, {
-        googleSub: profile.sub,
+        googleSub: profile.sub ?? `email:${profile.email.toLowerCase()}`,
         email: profile.email,
         name: profile.name ?? profile.email
       });
@@ -63,12 +66,11 @@ export function registerAuthRoutes(app: App): void {
       c.header(
         "Set-Cookie",
         Auth.toSetCookie({
-          name: "oauth_state",
+          name: OAUTH_STATE_COOKIE,
           value: "",
           maxAge: 0,
           secure: true
-        }),
-        { append: true }
+        })
       );
       return c.redirect("/");
     } catch (error) {

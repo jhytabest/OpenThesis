@@ -1,4 +1,13 @@
-export type ProjectSection = "dashboard" | "papers" | "chats" | "memory";
+export type ProjectSection =
+  | "dashboard"
+  | "documents"
+  | "runs"
+  | "workbench"
+  | "datasets"
+  | "audit"
+  | "papers"
+  | "chats"
+  | "memory";
 export type SitePageAccess = "public" | "auth";
 export type SitePageKey =
   | "account"
@@ -164,6 +173,21 @@ export const parseRoute = (pathname: string): AppRoute => {
   }
   if (section === "papers") {
     return { page: "project", pathname: normalizedPathname, projectId, section: "papers" };
+  }
+  if (section === "documents") {
+    return { page: "project", pathname: normalizedPathname, projectId, section: "documents" };
+  }
+  if (section === "runs") {
+    return { page: "project", pathname: normalizedPathname, projectId, section: "runs" };
+  }
+  if (section === "workbench") {
+    return { page: "project", pathname: normalizedPathname, projectId, section: "workbench" };
+  }
+  if (section === "datasets") {
+    return { page: "project", pathname: normalizedPathname, projectId, section: "datasets" };
+  }
+  if (section === "audit") {
+    return { page: "project", pathname: normalizedPathname, projectId, section: "audit" };
   }
   if (section === "memory") {
     return { page: "project", pathname: normalizedPathname, projectId, section: "memory" };

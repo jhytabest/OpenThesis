@@ -671,33 +671,27 @@ const run = async (): Promise<void> => {
   const envFile = path.join(projectRoot, ".env");
   const env = loadEnvFile(envFile);
 
-  const openAiApiKey = requireEnv(env, "OPENAI_API_KEY");
+  const byokProviderRaw = requireEnv(env, "BYOK_PROVIDER").toLowerCase();
+  if (
+    byokProviderRaw !== "openai" &&
+    byokProviderRaw !== "openrouter" &&
+    byokProviderRaw !== "gemini" &&
+    byokProviderRaw !== "claude"
+  ) {
+    throw new Error("BYOK_PROVIDER must be one of: openai, openrouter, gemini, claude");
+  }
+  const byokApiKey = requireEnv(env, "BYOK_API_KEY");
+  const byokModel = optionalEnv(env, "BYOK_MODEL");
   const semanticScholarApiKey = requireEnv(env, "SEMANTIC_SCHOLAR_API_KEY");
   const openAlexApiKey = requireEnv(env, "OPENALEX_API_KEY");
   const googleClientId = optionalEnv(env, "GOOGLE_CLIENT_ID");
   const googleClientSecret = optionalEnv(env, "GOOGLE_CLIENT_SECRET");
   const unpaywallEmail = optionalEnv(env, "UNPAYWALL_EMAIL");
-  const openAiPromptIdThesisSummary = requireEnv(env, "OPENAI_PROMPT_ID_THESIS_SUMMARY");
-  const openAiPromptVersionThesisSummary = optionalEnv(env, "OPENAI_PROMPT_VERSION_THESIS_SUMMARY");
-  const openAiPromptIdQueryGeneration = requireEnv(env, "OPENAI_PROMPT_ID_QUERY_GENERATION");
-  const openAiPromptVersionQueryGeneration = optionalEnv(
-    env,
-    "OPENAI_PROMPT_VERSION_QUERY_GENERATION"
-  );
-  const openAiPromptIdSeedSelection = requireEnv(env, "OPENAI_PROMPT_ID_SEED_SELECTION");
-  const openAiPromptVersionSeedSelection = optionalEnv(
-    env,
-    "OPENAI_PROMPT_VERSION_SEED_SELECTION"
-  );
 
   const providerEnv = {
-    OPENAI_API_KEY: openAiApiKey,
-    OPENAI_PROMPT_ID_THESIS_SUMMARY: openAiPromptIdThesisSummary,
-    OPENAI_PROMPT_VERSION_THESIS_SUMMARY: openAiPromptVersionThesisSummary,
-    OPENAI_PROMPT_ID_QUERY_GENERATION: openAiPromptIdQueryGeneration,
-    OPENAI_PROMPT_VERSION_QUERY_GENERATION: openAiPromptVersionQueryGeneration,
-    OPENAI_PROMPT_ID_SEED_SELECTION: openAiPromptIdSeedSelection,
-    OPENAI_PROMPT_VERSION_SEED_SELECTION: openAiPromptVersionSeedSelection,
+    BYOK_PROVIDER: byokProviderRaw,
+    BYOK_API_KEY: byokApiKey,
+    BYOK_MODEL: byokModel,
     SEMANTIC_SCHOLAR_API_KEY: semanticScholarApiKey,
     OPENALEX_API_KEY: openAlexApiKey,
     UNPAYWALL_EMAIL: unpaywallEmail,
@@ -711,9 +705,7 @@ const run = async (): Promise<void> => {
   const sessionDir = path.join(projectRoot, "debug-runs", sessionId);
   fs.mkdirSync(sessionDir, { recursive: true });
   console.log(`Session log dir: ${sessionDir}`);
-  console.log(
-    `Prompt IDs: thesis_summary=${openAiPromptIdThesisSummary}, query_generation=${openAiPromptIdQueryGeneration}, seed_selection=${openAiPromptIdSeedSelection}`
-  );
+  console.log(`BYOK provider: ${byokProviderRaw}${byokModel ? ` (${byokModel})` : ""}`);
   console.log(`Selected fixtures: ${selected.map((item) => item.id).join(", ")}`);
 
   for (const thesis of selected) {

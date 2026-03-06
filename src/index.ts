@@ -6,6 +6,8 @@ import { registerAuthRoutes } from "./routes/auth.js";
 import { registerProjectCoreRoutes } from "./routes/projects-core.js";
 import { registerProjectChatRoutes } from "./routes/projects-chats.js";
 import { registerProjectPaperRoutes } from "./routes/projects-papers.js";
+import { registerProjectWorkspaceRoutes } from "./routes/projects-workspace.js";
+import { registerSettingsRoutes } from "./routes/settings.js";
 import { handleQueue } from "./worker/queue.js";
 
 // Worker composition only: routes and processing live in dedicated modules.
@@ -13,7 +15,9 @@ const app = new Hono<AppBindings>();
 
 registerInternalRoutes(app);
 registerAuthRoutes(app);
+registerSettingsRoutes(app);
 registerProjectCoreRoutes(app);
+registerProjectWorkspaceRoutes(app);
 registerProjectChatRoutes(app);
 registerProjectPaperRoutes(app);
 

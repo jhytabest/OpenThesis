@@ -6,6 +6,28 @@ import {
 } from "./zod-schemas.js";
 
 export type RunStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+export type RunType = "RESEARCH" | "THESIS_ASSISTANT" | "DATASET_ANALYSIS";
+export type ContextStatus = "CURRENT" | "STALE";
+export type SourceDocumentKind = "GOOGLE_DOC" | "GOOGLE_SHEET" | "PDF" | "CSV" | "XLSX";
+export type ByokProvider = "openai" | "openrouter" | "gemini" | "claude";
+export type ArtifactType =
+  | "SECTION_BUNDLE"
+  | "RUN_MANIFEST"
+  | "RUN_AUDIT_EXPORT"
+  | "SYNC_REPORT"
+  | "DATASET_PROFILE";
+export type AuditEventType =
+  | "RUN_CREATED"
+  | "RUN_STARTED"
+  | "RUN_COMPLETED"
+  | "RUN_FAILED"
+  | "SYNC_STARTED"
+  | "SYNC_COMPLETED"
+  | "SYNC_FAILED"
+  | "COMMENT_POSTED"
+  | "COMMENT_FAILED"
+  | "ARTIFACT_EXPORTED"
+  | "ARTIFACT_EXPORT_FAILED";
 
 export interface SessionUser {
   id: string;
@@ -54,21 +76,19 @@ export interface Env {
   ALEXCLAW_DB: D1Database;
   ALEXCLAW_RUN_QUEUE: Queue;
   ALEXCLAW_ENRICH_QUEUE: Queue<UnpaywallEnrichmentMessage>;
+  ALEXCLAW_ARTIFACTS?: R2Bucket;
   ALEXCLAW_RUN_WORKFLOW: {
     create(input: { id?: string; params: { runId: string } }): Promise<{ id: string }>;
   };
-  OPENAI_API_KEY?: string;
-  OPENAI_PROMPT_ID_THESIS_SUMMARY?: string;
-  OPENAI_PROMPT_VERSION_THESIS_SUMMARY?: string;
-  OPENAI_PROMPT_ID_QUERY_GENERATION?: string;
-  OPENAI_PROMPT_VERSION_QUERY_GENERATION?: string;
-  OPENAI_PROMPT_ID_SEED_SELECTION?: string;
-  OPENAI_PROMPT_VERSION_SEED_SELECTION?: string;
+  BYOK_PROVIDER?: ByokProvider;
+  BYOK_API_KEY?: string;
+  BYOK_MODEL?: string;
   SEMANTIC_SCHOLAR_API_KEY?: string;
   OPENALEX_API_KEY?: string;
   UNPAYWALL_EMAIL?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  ENCRYPTION_KEY?: string;
   INTERNAL_API_TOKEN?: string;
   CHAT_BACKEND_URL?: string;
   CHAT_BACKEND_BEARER_TOKEN?: string;

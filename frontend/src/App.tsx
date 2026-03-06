@@ -32,6 +32,26 @@ const DashboardPage = lazy(async () => {
   const module = await import("@/features/dashboard/dashboard-page");
   return { default: module.DashboardPage };
 });
+const DocumentsPage = lazy(async () => {
+  const module = await import("@/features/documents/documents-page");
+  return { default: module.DocumentsPage };
+});
+const RunsPage = lazy(async () => {
+  const module = await import("@/features/runs/runs-page");
+  return { default: module.RunsPage };
+});
+const WorkbenchPage = lazy(async () => {
+  const module = await import("@/features/workbench/workbench-page");
+  return { default: module.WorkbenchPage };
+});
+const DatasetsPage = lazy(async () => {
+  const module = await import("@/features/datasets/datasets-page");
+  return { default: module.DatasetsPage };
+});
+const AuditPage = lazy(async () => {
+  const module = await import("@/features/audit/audit-page");
+  return { default: module.AuditPage };
+});
 const PapersPage = lazy(async () => {
   const module = await import("@/features/papers/papers-page");
   return { default: module.PapersPage };
@@ -327,6 +347,21 @@ export default function App() {
     if (route.page === "project") {
       if (route.section === "dashboard") {
         return <DashboardPage projectId={route.projectId} />;
+      }
+      if (route.section === "documents") {
+        return <DocumentsPage projectId={route.projectId} />;
+      }
+      if (route.section === "runs") {
+        return <RunsPage projectId={route.projectId} />;
+      }
+      if (route.section === "workbench") {
+        return <WorkbenchPage projectId={route.projectId} />;
+      }
+      if (route.section === "datasets") {
+        return <DatasetsPage projectId={route.projectId} />;
+      }
+      if (route.section === "audit") {
+        return <AuditPage projectId={route.projectId} />;
       }
       if (route.section === "papers") {
         return <PapersPage projectId={route.projectId} />;

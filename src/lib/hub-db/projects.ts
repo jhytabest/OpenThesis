@@ -37,6 +37,8 @@ export const projectsRepo = {
          t.created_at,
          lr.id AS latest_run_id,
          lr.status AS latest_run_status,
+         lr.run_type AS latest_run_type,
+         lr.context_status AS latest_run_context_status,
          lr.updated_at AS latest_run_updated_at,
          COALESCE(ps.paper_count, 0) AS paper_count,
          COALESCE(ps.reading_count, 0) AS reading_count,
@@ -110,13 +112,16 @@ export const projectsRepo = {
   async getProjectLatestRunOwned(db: D1Database, projectId: string, userId: string): Promise<{
     id: string;
     status: RunStatus;
+    run_type: "RESEARCH" | "THESIS_ASSISTANT" | "DATASET_ANALYSIS";
+    context_status: "CURRENT" | "STALE";
+    input_snapshot_hash: string | null;
     error: string | null;
     created_at: string;
     updated_at: string;
   } | null> {
     return first(
       db,
-      `SELECT id, status, error, created_at, updated_at
+      `SELECT id, status, run_type, context_status, input_snapshot_hash, error, created_at, updated_at
        FROM runs
        WHERE thesis_id = ? AND user_id = ?
        ORDER BY created_at DESC, updated_at DESC

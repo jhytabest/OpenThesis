@@ -1,6 +1,8 @@
 import { Auth } from "../lib/auth.js";
 import { Db } from "../lib/db.js";
 import { HubDb } from "../lib/hub-db.js";
+import { WorkspaceService } from "../lib/workspace-service.js";
+import type { RunType } from "../lib/types.js";
 import {
   MAX_THESIS_TEXT_LENGTH,
   MAX_MEMORY_DOC_CONTENT_LENGTH,
@@ -27,6 +29,11 @@ const dispatchRun = async (
 };
 const MEMORY_DOC_KEY_PATTERN = /^[a-z0-9](?:[a-z0-9_-]{0,63})$/;
 
+const ensureByokConfigured = async (db: D1Database, userId: string): Promise<boolean> => {
+  const credential = await Db.getResolvedUserLlmCredential(db, userId);
+  return Boolean(credential);
+};
+
 export function registerProjectCoreRoutes(app: App): void {
   app.get("/api/projects", async (c) => {
     const user = await Auth.resolveUser(c);
@@ -44,6 +51,8 @@ export function registerProjectCoreRoutes(app: App): void {
           ? {
               id: project.latest_run_id,
               status: project.latest_run_status,
+              runType: project.latest_run_type,
+              contextStatus: project.latest_run_context_status,
               updatedAt: project.latest_run_updated_at
             }
           : null,
@@ -79,6 +88,9 @@ export function registerProjectCoreRoutes(app: App): void {
           ? {
               id: latestRun.id,
               status: latestRun.status,
+              runType: latestRun.run_type,
+              contextStatus: latestRun.context_status,
+              inputSnapshotHash: latestRun.input_snapshot_hash,
               error: latestRun.error,
               updatedAt: latestRun.updated_at
             }
@@ -117,17 +129,29 @@ export function registerProjectCoreRoutes(app: App): void {
       return json({ error: `thesisText must be at most ${MAX_THESIS_TEXT_LENGTH} characters` }, 413);
     }
 
+    const byokConfigured = await ensureByokConfigured(c.env.ALEXCLAW_DB, user.id);
+    if (!byokConfigured) {
+      return json(
+        {
+          error: "BYOK is required before creating projects. Configure a provider key in Account settings."
+        },
+        400
+      );
+    }
+
     const project = await HubDb.createProject(c.env.ALEXCLAW_DB, {
       userId: user.id,
       title: body.title,
       thesisText
     });
 
-    const run = await Db.createRun(c.env.ALEXCLAW_DB, {
+    const runDraft = await WorkspaceService.createRunWithFrozenSnapshots({
+      env: c.env,
+      projectId: project.id,
       userId: user.id,
-      thesisId: project.id
+      runType: "RESEARCH"
     });
-    const dispatched = await dispatchRun(c.env.ALEXCLAW_DB, c.env.ALEXCLAW_RUN_QUEUE, run.id);
+    const dispatched = await dispatchRun(c.env.ALEXCLAW_DB, c.env.ALEXCLAW_RUN_QUEUE, runDraft.runId);
     if (!dispatched.ok) {
       return json(
         {
@@ -139,10 +163,10 @@ export function registerProjectCoreRoutes(app: App): void {
             createdAt: project.created_at
           },
           run: {
-            id: run.id,
+            id: runDraft.runId,
             status: "FAILED",
             error: "Run dispatch failed",
-            createdAt: run.created_at
+            createdAt: runDraft.createdAt
           }
         },
         503
@@ -158,9 +182,12 @@ export function registerProjectCoreRoutes(app: App): void {
           createdAt: project.created_at
         },
         run: {
-          id: run.id,
-          status: run.status,
-          createdAt: run.created_at
+          id: runDraft.runId,
+          status: "QUEUED",
+          runType: "RESEARCH",
+          contextStatus: "CURRENT",
+          inputSnapshotHash: runDraft.snapshotHash,
+          createdAt: runDraft.createdAt
         }
       },
       201
@@ -245,20 +272,39 @@ export function registerProjectCoreRoutes(app: App): void {
       return response;
     }
 
-    const run = await Db.createRun(c.env.ALEXCLAW_DB, {
+    const bodyRaw = await c.req.json().catch(() => ({}));
+    const body = bodyRaw as { runType?: RunType; snapshotPolicy?: string };
+    const runType = body.runType ?? "RESEARCH";
+    if (runType !== "RESEARCH" && runType !== "THESIS_ASSISTANT" && runType !== "DATASET_ANALYSIS") {
+      return json({ error: "runType must be RESEARCH, THESIS_ASSISTANT, or DATASET_ANALYSIS" }, 400);
+    }
+    if (body.snapshotPolicy !== undefined && body.snapshotPolicy !== "LATEST_FROZEN") {
+      return json({ error: "snapshotPolicy must be LATEST_FROZEN" }, 400);
+    }
+    const byokConfigured = await ensureByokConfigured(c.env.ALEXCLAW_DB, user.id);
+    if (!byokConfigured) {
+      return json({ error: "BYOK is required before creating runs. Configure Account settings first." }, 400);
+    }
+
+    const runDraft = await WorkspaceService.createRunWithFrozenSnapshots({
+      env: c.env,
+      projectId,
       userId: user.id,
-      thesisId: projectId
+      runType
     });
-    const dispatched = await dispatchRun(c.env.ALEXCLAW_DB, c.env.ALEXCLAW_RUN_QUEUE, run.id);
+    const dispatched = await dispatchRun(c.env.ALEXCLAW_DB, c.env.ALEXCLAW_RUN_QUEUE, runDraft.runId);
     if (!dispatched.ok) {
       return json(
         {
           error: "Failed to dispatch run",
           run: {
-            id: run.id,
+            id: runDraft.runId,
             status: "FAILED",
             error: "Run dispatch failed",
-            createdAt: run.created_at
+            runType,
+            contextStatus: "CURRENT",
+            inputSnapshotHash: runDraft.snapshotHash,
+            createdAt: runDraft.createdAt
           }
         },
         503
@@ -267,9 +313,12 @@ export function registerProjectCoreRoutes(app: App): void {
     return json(
       {
         run: {
-          id: run.id,
-          status: run.status,
-          createdAt: run.created_at
+          id: runDraft.runId,
+          status: "QUEUED",
+          runType,
+          contextStatus: "CURRENT",
+          inputSnapshotHash: runDraft.snapshotHash,
+          createdAt: runDraft.createdAt
         }
       },
       201

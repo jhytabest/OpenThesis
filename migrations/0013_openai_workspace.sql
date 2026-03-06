@@ -1,5 +1,4 @@
--- Reset existing user-owned workspace data as part of OpenAI auth cutover.
-DELETE FROM users;
+-- Introduce workspace provenance and integration tables.
 
 CREATE TABLE IF NOT EXISTS auth_identities (
   id TEXT PRIMARY KEY,

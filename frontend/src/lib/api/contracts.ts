@@ -3,6 +3,7 @@ export type RunType = "RESEARCH" | "THESIS_ASSISTANT" | "DATASET_ANALYSIS";
 export type ContextStatus = "CURRENT" | "STALE";
 export type SourceDocumentKind = "GOOGLE_DOC" | "GOOGLE_SHEET" | "PDF" | "CSV" | "XLSX";
 export type ByokProvider = "openai" | "openrouter" | "gemini" | "claude";
+export type ResearchKeyProvider = "openalex" | "semantic_scholar";
 
 export interface SessionUser {
   id: string;
@@ -168,6 +169,27 @@ export interface SetByokRequest {
 
 export interface ClearByokRequest {
   provider?: ByokProvider;
+}
+
+export interface ResearchKeySettings {
+  providers: Record<ResearchKeyProvider, {
+    configured: boolean;
+    keyHint: string | null;
+    updatedAt: string | null;
+  }>;
+}
+
+export interface GetResearchKeysResponse {
+  researchKeys: ResearchKeySettings;
+}
+
+export interface SetResearchKeyRequest {
+  provider: ResearchKeyProvider;
+  apiKey: string;
+}
+
+export interface ClearResearchKeyRequest {
+  provider?: ResearchKeyProvider;
 }
 
 export interface GoogleIntegrationStatusResponse {

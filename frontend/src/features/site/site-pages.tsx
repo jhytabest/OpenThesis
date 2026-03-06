@@ -32,7 +32,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { ApiError, settingsApi, type ByokProvider, type ByokSettings, type SessionUser } from "@/lib/api";
+import {
+  ApiError,
+  settingsApi,
+  type ByokProvider,
+  type ByokSettings,
+  type ResearchKeyProvider,
+  type ResearchKeySettings,
+  type SessionUser
+} from "@/lib/api";
 
 interface SitePagesProps {
   page: SitePageKey;
@@ -100,6 +108,11 @@ const BYOK_DEFAULT_MODELS: Record<ByokProvider, string> = {
   claude: "claude-3-5-sonnet-latest"
 };
 
+const RESEARCH_PROVIDER_LABELS: Record<ResearchKeyProvider, string> = {
+  openalex: "OpenAlex",
+  semantic_scholar: "Semantic Scholar"
+};
+
 export function SitePages({ page, user, onNavigate }: SitePagesProps) {
   const [byok, setByok] = useState<ByokSettings | null>(null);
   const [byokLoading, setByokLoading] = useState(false);
@@ -108,35 +121,52 @@ export function SitePages({ page, user, onNavigate }: SitePagesProps) {
   const [modelDraft, setModelDraft] = useState(BYOK_DEFAULT_MODELS.openai);
   const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [byokSaving, setByokSaving] = useState(false);
+  const [researchKeys, setResearchKeys] = useState<ResearchKeySettings | null>(null);
+  const [researchLoading, setResearchLoading] = useState(false);
+  const [researchError, setResearchError] = useState<string | null>(null);
+  const [researchProviderDraft, setResearchProviderDraft] = useState<ResearchKeyProvider>("openalex");
+  const [researchKeyDraft, setResearchKeyDraft] = useState("");
+  const [researchSaving, setResearchSaving] = useState(false);
 
   useEffect(() => {
     if (!user || page !== "account") {
       return;
     }
     setByokLoading(true);
+    setResearchLoading(true);
     setByokError(null);
-    void settingsApi.getByok()
-      .then((response) => {
-        setByok(response.byok);
-        const nextProvider = response.byok.activeProvider ?? "openai";
+    setResearchError(null);
+    void Promise.all([settingsApi.getByok(), settingsApi.getResearchKeys()])
+      .then(([byokResponse, researchResponse]) => {
+        setByok(byokResponse.byok);
+        const nextProvider = byokResponse.byok.activeProvider ?? "openai";
         setProviderDraft(nextProvider);
         setModelDraft(
-          response.byok.providers[nextProvider].model ??
-            response.byok.activeModel ??
+          byokResponse.byok.providers[nextProvider].model ??
+            byokResponse.byok.activeModel ??
             BYOK_DEFAULT_MODELS[nextProvider]
         );
+        setResearchKeys(researchResponse.researchKeys);
       })
       .catch((error) => {
-        const message = error instanceof ApiError ? error.message : "Failed to load BYOK settings";
+        const message = error instanceof ApiError ? error.message : "Failed to load account settings";
         setByokError(message);
+        setResearchError(message);
       })
-      .finally(() => setByokLoading(false));
+      .finally(() => {
+        setByokLoading(false);
+        setResearchLoading(false);
+      });
   }, [page, user]);
 
   const meta = SITE_PAGE_META[page];
   const reloadByok = async (): Promise<void> => {
     const response = await settingsApi.getByok();
     setByok(response.byok);
+  };
+  const reloadResearchKeys = async (): Promise<void> => {
+    const response = await settingsApi.getResearchKeys();
+    setResearchKeys(response.researchKeys);
   };
 
   const handleSaveByok = async (): Promise<void> => {
@@ -191,6 +221,38 @@ export function SitePages({ page, user, onNavigate }: SitePagesProps) {
       setByokError(message);
     } finally {
       setByokSaving(false);
+    }
+  };
+
+  const handleSaveResearchKey = async (): Promise<void> => {
+    setResearchSaving(true);
+    setResearchError(null);
+    try {
+      await settingsApi.setResearchKey({
+        provider: researchProviderDraft,
+        apiKey: researchKeyDraft.trim()
+      });
+      setResearchKeyDraft("");
+      await reloadResearchKeys();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Failed to save research API key";
+      setResearchError(message);
+    } finally {
+      setResearchSaving(false);
+    }
+  };
+
+  const handleRemoveResearchProvider = async (provider: ResearchKeyProvider): Promise<void> => {
+    setResearchSaving(true);
+    setResearchError(null);
+    try {
+      await settingsApi.clearResearchKeys({ provider });
+      await reloadResearchKeys();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Failed to remove research API key";
+      setResearchError(message);
+    } finally {
+      setResearchSaving(false);
     }
   };
 
@@ -368,6 +430,111 @@ export function SitePages({ page, user, onNavigate }: SitePagesProps) {
                             Remove
                           </Button>
                         </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </Section>
+
+        <Section
+          title="Research APIs (BYOK)"
+          description="Set OpenAlex and Semantic Scholar keys per user. Unpaywall uses your account email."
+        >
+          <div className="grid gap-3">
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Provider</Label>
+                <Select
+                  value={researchProviderDraft}
+                  onValueChange={(value) => setResearchProviderDraft(value as ResearchKeyProvider)}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="openalex">OpenAlex</SelectItem>
+                    <SelectItem value="semantic_scholar">Semantic Scholar</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="research-key">API Key</Label>
+                <Input
+                  id="research-key"
+                  className="h-9"
+                  value={researchKeyDraft}
+                  onChange={(event) => setResearchKeyDraft(event.target.value)}
+                  placeholder="Paste provider key"
+                  type="password"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                onClick={() => void handleSaveResearchKey()}
+                disabled={researchSaving || researchKeyDraft.trim().length < 16}
+              >
+                Save key
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setResearchSaving(true);
+                  setResearchError(null);
+                  void settingsApi.clearResearchKeys()
+                    .then(reloadResearchKeys)
+                    .catch((error) => {
+                      const message = error instanceof ApiError ? error.message : "Failed to clear research keys";
+                      setResearchError(message);
+                    })
+                    .finally(() => setResearchSaving(false));
+                }}
+                disabled={researchSaving}
+              >
+                Clear all keys
+              </Button>
+              {researchLoading ? <Badge variant="secondary">Loading...</Badge> : null}
+              {researchError ? <Badge variant="destructive">{researchError}</Badge> : null}
+            </div>
+
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="h-10 px-3 text-xs">Provider</TableHead>
+                  <TableHead className="h-10 px-3 text-xs">Status</TableHead>
+                  <TableHead className="h-10 px-3 text-xs">Key</TableHead>
+                  <TableHead className="h-10 px-3 text-xs">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(["openalex", "semantic_scholar"] as const).map((provider) => {
+                  const state = researchKeys?.providers[provider] ?? {
+                    configured: false,
+                    keyHint: null,
+                    updatedAt: null
+                  };
+                  return (
+                    <TableRow key={provider}>
+                      <TableCell className="px-3 py-2 text-sm">{RESEARCH_PROVIDER_LABELS[provider]}</TableCell>
+                      <TableCell className="px-3 py-2 text-sm">
+                        {state.configured ? <Badge>Configured</Badge> : <Badge variant="outline">Not set</Badge>}
+                      </TableCell>
+                      <TableCell className="px-3 py-2 text-sm">{state.keyHint ?? "-"}</TableCell>
+                      <TableCell className="px-3 py-2 text-sm">
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={!state.configured || researchSaving}
+                          onClick={() => void handleRemoveResearchProvider(provider)}
+                        >
+                          Remove
+                        </Button>
                       </TableCell>
                     </TableRow>
                   );

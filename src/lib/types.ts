@@ -10,6 +10,7 @@ export type RunType = "RESEARCH" | "THESIS_ASSISTANT" | "DATASET_ANALYSIS";
 export type ContextStatus = "CURRENT" | "STALE";
 export type SourceDocumentKind = "GOOGLE_DOC" | "GOOGLE_SHEET" | "PDF" | "CSV" | "XLSX";
 export type ByokProvider = "openai" | "openrouter" | "gemini" | "claude";
+export type ResearchApiProvider = "openalex" | "semantic_scholar";
 export type ArtifactType =
   | "SECTION_BUNDLE"
   | "RUN_MANIFEST"
@@ -127,6 +128,7 @@ export interface UnpaywallEnrichmentMessage {
   paperId: string;
   openalexId: string;
   doi: string;
+  userEmail: string;
 }
 
 export interface SelectSeedsInput {

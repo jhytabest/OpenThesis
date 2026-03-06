@@ -142,8 +142,24 @@ export async function processRun(env: Env, runId: string): Promise<void> {
     return;
   }
 
-  const credential = await Db.getResolvedUserLlmCredential(env.ALEXCLAW_DB, run.user_id);
-  if (!credential) {
+  const runOwner = await Db.getUserById(env.ALEXCLAW_DB, run.user_id);
+  if (!runOwner?.email) {
+    await Db.updateRunStatus(env.ALEXCLAW_DB, runId, "FAILED", "Run owner email is unavailable");
+    await Db.addRunAuditEvent(env.ALEXCLAW_DB, {
+      runId,
+      eventType: "RUN_FAILED",
+      detail: {
+        runType: run.run_type,
+        contextStatus: run.context_status,
+        failedAt: new Date().toISOString(),
+        error: "Run owner email is unavailable"
+      }
+    });
+    return;
+  }
+
+  const llmCredential = await Db.getResolvedUserLlmCredential(env.ALEXCLAW_DB, run.user_id);
+  if (!llmCredential) {
     await Db.updateRunStatus(env.ALEXCLAW_DB, runId, "FAILED", "BYOK is not configured for this user");
     await Db.addRunAuditEvent(env.ALEXCLAW_DB, {
       runId,
@@ -158,12 +174,20 @@ export async function processRun(env: Env, runId: string): Promise<void> {
     return;
   }
 
-  let resolvedApiKey: string;
-  try {
-    resolvedApiKey = await Encrypt.decrypt(env.ENCRYPTION_KEY, credential.encrypted_key);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    await Db.updateRunStatus(env.ALEXCLAW_DB, runId, "FAILED", `Failed to decrypt BYOK key: ${message}`);
+  const [openalexCredential, semanticScholarCredential] = await Promise.all([
+    Db.getUserResearchApiKey(env.ALEXCLAW_DB, run.user_id, "openalex"),
+    Db.getUserResearchApiKey(env.ALEXCLAW_DB, run.user_id, "semantic_scholar")
+  ]);
+  const missingResearchProviders: string[] = [];
+  if (!openalexCredential) {
+    missingResearchProviders.push("openalex");
+  }
+  if (!semanticScholarCredential) {
+    missingResearchProviders.push("semantic_scholar");
+  }
+  if (missingResearchProviders.length > 0) {
+    const errorMessage = `Research BYOK keys are missing: ${missingResearchProviders.join(", ")}`;
+    await Db.updateRunStatus(env.ALEXCLAW_DB, runId, "FAILED", errorMessage);
     await Db.addRunAuditEvent(env.ALEXCLAW_DB, {
       runId,
       eventType: "RUN_FAILED",
@@ -171,20 +195,57 @@ export async function processRun(env: Env, runId: string): Promise<void> {
         runType: run.run_type,
         contextStatus: run.context_status,
         failedAt: new Date().toISOString(),
-        error: `Failed to decrypt BYOK key: ${message}`
+        error: errorMessage
+      }
+    });
+    return;
+  }
+  if (!openalexCredential || !semanticScholarCredential) {
+    await Db.updateRunStatus(env.ALEXCLAW_DB, runId, "FAILED", "Research BYOK keys are unavailable");
+    return;
+  }
+
+  let resolvedLlmApiKey: string;
+  let resolvedOpenalexApiKey: string;
+  let resolvedSemanticScholarApiKey: string;
+  try {
+    [resolvedLlmApiKey, resolvedOpenalexApiKey, resolvedSemanticScholarApiKey] = await Promise.all([
+      Encrypt.decrypt(env.ENCRYPTION_KEY, llmCredential.encrypted_key),
+      Encrypt.decrypt(env.ENCRYPTION_KEY, openalexCredential.encrypted_key),
+      Encrypt.decrypt(env.ENCRYPTION_KEY, semanticScholarCredential.encrypted_key)
+    ]);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await Db.updateRunStatus(
+      env.ALEXCLAW_DB,
+      runId,
+      "FAILED",
+      `Failed to decrypt BYOK key(s): ${message}`
+    );
+    await Db.addRunAuditEvent(env.ALEXCLAW_DB, {
+      runId,
+      eventType: "RUN_FAILED",
+      detail: {
+        runType: run.run_type,
+        contextStatus: run.context_status,
+        failedAt: new Date().toISOString(),
+        error: `Failed to decrypt BYOK key(s): ${message}`
       }
     });
     return;
   }
 
-  const activeModel = credential.model ?? BYOK_DEFAULT_MODELS[credential.provider];
+  const activeModel = llmCredential.model ?? BYOK_DEFAULT_MODELS[llmCredential.provider];
   let providers: ReturnType<typeof buildProviders>;
   try {
     providers = buildProviders({
       ...env,
-      BYOK_PROVIDER: credential.provider,
-      BYOK_API_KEY: resolvedApiKey,
-      BYOK_MODEL: activeModel
+      BYOK_PROVIDER: llmCredential.provider,
+      BYOK_API_KEY: resolvedLlmApiKey,
+      BYOK_MODEL: activeModel,
+      OPENALEX_API_KEY: resolvedOpenalexApiKey,
+      SEMANTIC_SCHOLAR_API_KEY: resolvedSemanticScholarApiKey,
+      UNPAYWALL_EMAIL: runOwner.email
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -241,7 +302,7 @@ export async function processRun(env: Env, runId: string): Promise<void> {
       runId,
       entityType: "run",
       entityId: runId,
-      source: `${credential.provider}.thesis_summary`,
+      source: `${llmCredential.provider}.thesis_summary`,
       detail: thesisSummary
     });
     await HubDb.upsertProjectMemoryDoc(env.ALEXCLAW_DB, {
@@ -268,7 +329,7 @@ export async function processRun(env: Env, runId: string): Promise<void> {
       runId,
       entityType: "run",
       entityId: runId,
-      source: `${credential.provider}.query_generation`,
+      source: `${llmCredential.provider}.query_generation`,
       detail: queryGeneration
     });
 
@@ -426,7 +487,7 @@ export async function processRun(env: Env, runId: string): Promise<void> {
       runId,
       entityType: "run",
       entityId: runId,
-      source: `${credential.provider}.seed_selection`,
+      source: `${llmCredential.provider}.seed_selection`,
       detail: {
         ...seedSelection,
         selectedCount: selectedSeedCandidates.length,
@@ -558,7 +619,8 @@ export async function processRun(env: Env, runId: string): Promise<void> {
           runId,
           paperId: paperIdByOpenAlexId.get(paper.openalexId)!,
           openalexId: paper.openalexId,
-          doi: paper.doi!
+          doi: paper.doi!,
+          userEmail: runOwner.email
         }));
 
       if (enrichmentMessages.length === 0) {

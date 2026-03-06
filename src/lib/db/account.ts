@@ -1,4 +1,4 @@
-import type { ByokProvider, SessionUser } from "../types.js";
+import type { ByokProvider, ResearchApiProvider, SessionUser } from "../types.js";
 import { first, nowIso, run, runChanges } from "./base.js";
 
 export const accountRepo = {
@@ -141,6 +141,14 @@ export const accountRepo = {
     await run(db, `DELETE FROM sessions WHERE token_hash = ?`, tokenHash);
   },
 
+  async getUserById(db: D1Database, userId: string): Promise<SessionUser | null> {
+    return first<SessionUser>(
+      db,
+      `SELECT id, email, name FROM users WHERE id = ?`,
+      userId
+    );
+  },
+
   async upsertUserApiKey(db: D1Database, input: {
     userId: string;
     provider: ByokProvider;
@@ -230,6 +238,87 @@ export const accountRepo = {
 
   async deleteAllUserApiKeys(db: D1Database, userId: string): Promise<void> {
     await run(db, `DELETE FROM user_api_keys WHERE user_id = ?`, userId);
+  },
+
+  async upsertUserResearchApiKey(db: D1Database, input: {
+    userId: string;
+    provider: ResearchApiProvider;
+    encryptedKey: string;
+    keyHint?: string | null;
+  }): Promise<void> {
+    const now = nowIso();
+    await run(
+      db,
+      `INSERT INTO user_research_api_keys (id, user_id, provider, encrypted_key, key_hint, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, provider) DO UPDATE SET
+         encrypted_key = excluded.encrypted_key,
+         key_hint = excluded.key_hint,
+         updated_at = excluded.updated_at`,
+      crypto.randomUUID(),
+      input.userId,
+      input.provider,
+      input.encryptedKey,
+      input.keyHint ?? null,
+      now,
+      now
+    );
+  },
+
+  async listUserResearchApiKeys(db: D1Database, userId: string): Promise<Array<{
+    provider: ResearchApiProvider;
+    encrypted_key: string;
+    key_hint: string | null;
+    updated_at: string;
+  }>> {
+    const result = await db.prepare(
+      `SELECT provider, encrypted_key, key_hint, updated_at
+       FROM user_research_api_keys
+       WHERE user_id = ?
+       ORDER BY updated_at DESC`
+    ).bind(userId).all();
+    return (result.results ?? []) as Array<{
+      provider: ResearchApiProvider;
+      encrypted_key: string;
+      key_hint: string | null;
+      updated_at: string;
+    }>;
+  },
+
+  async getUserResearchApiKey(
+    db: D1Database,
+    userId: string,
+    provider: ResearchApiProvider
+  ): Promise<{
+    provider: ResearchApiProvider;
+    encrypted_key: string;
+    key_hint: string | null;
+    updated_at: string;
+  } | null> {
+    return first(
+      db,
+      `SELECT provider, encrypted_key, key_hint, updated_at
+       FROM user_research_api_keys
+       WHERE user_id = ? AND provider = ?`,
+      userId,
+      provider
+    );
+  },
+
+  async deleteUserResearchApiKey(
+    db: D1Database,
+    input: { userId: string; provider: ResearchApiProvider }
+  ): Promise<void> {
+    await run(
+      db,
+      `DELETE FROM user_research_api_keys WHERE user_id = ? AND provider = ?`,
+      input.userId,
+      input.provider
+    );
+  },
+
+  async deleteAllUserResearchApiKeys(db: D1Database, userId: string): Promise<void> {
+    await run(db, `DELETE FROM user_research_api_keys WHERE user_id = ?`, userId);
   },
 
   async getUserLlmSettings(db: D1Database, userId: string): Promise<{

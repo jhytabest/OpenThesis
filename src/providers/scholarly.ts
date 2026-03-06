@@ -176,7 +176,10 @@ export const buildLiveSemanticScholarProvider = (
   env: Env,
   fetchJson: JsonFetcher
 ): SemanticScholarProvider => {
-  const apiKey = env.SEMANTIC_SCHOLAR_API_KEY;
+  const apiKey = env.SEMANTIC_SCHOLAR_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("SEMANTIC_SCHOLAR_API_KEY is required in live mode");
+  }
   const baseUrl = "https://api.semanticscholar.org";
   const allowedFields = new Set<string>(semanticScholarFieldsOfStudy);
 
@@ -187,9 +190,7 @@ export const buildLiveSemanticScholarProvider = (
     if (headers && !(headers instanceof Headers)) {
       Object.assign(merged, headers as Record<string, string>);
     }
-    if (apiKey) {
-      merged["x-api-key"] = apiKey;
-    }
+    merged["x-api-key"] = apiKey;
     return merged;
   };
 

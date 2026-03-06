@@ -1,8 +1,13 @@
 import { Auth } from "../lib/auth.js";
-import { BYOK_DEFAULT_MODELS, BYOK_PROVIDERS, isByokProvider } from "../lib/byok.js";
+import {
+  BYOK_DEFAULT_MODELS,
+  BYOK_PROVIDERS,
+  isByokProvider,
+  isResearchApiProvider
+} from "../lib/byok.js";
 import { Db } from "../lib/db.js";
 import { Encrypt } from "../lib/crypto.js";
-import type { ByokProvider } from "../lib/types.js";
+import type { ByokProvider, ResearchApiProvider } from "../lib/types.js";
 import { json, type App } from "./shared.js";
 
 const requireEncryptionKey = (env: { ENCRYPTION_KEY?: string }): string => {
@@ -161,6 +166,87 @@ export function registerSettingsRoutes(app: App): void {
     } else {
       await Db.deleteAllUserApiKeys(c.env.ALEXCLAW_DB, user.id);
       await Db.clearUserLlmSettings(c.env.ALEXCLAW_DB, user.id);
+    }
+    return json({ ok: true });
+  });
+
+  app.get("/api/settings/research-keys", async (c) => {
+    const user = await Auth.resolveUser(c);
+    if (!user) {
+      return json({ error: "Unauthorized" }, 401);
+    }
+
+    const keys = await Db.listUserResearchApiKeys(c.env.ALEXCLAW_DB, user.id);
+    const providers: Record<ResearchApiProvider, {
+      configured: boolean;
+      keyHint: string | null;
+      updatedAt: string | null;
+    }> = {
+      openalex: { configured: false, keyHint: null, updatedAt: null },
+      semantic_scholar: { configured: false, keyHint: null, updatedAt: null }
+    };
+    for (const key of keys) {
+      providers[key.provider] = {
+        configured: true,
+        keyHint: key.key_hint,
+        updatedAt: key.updated_at
+      };
+    }
+
+    return json({ researchKeys: { providers } });
+  });
+
+  app.put("/api/settings/research-keys", async (c) => {
+    const user = await Auth.resolveUser(c);
+    if (!user) {
+      return json({ error: "Unauthorized" }, 401);
+    }
+
+    const bodyRaw = await c.req.json().catch(() => ({}));
+    const body = bodyRaw as {
+      provider?: string;
+      apiKey?: string;
+    };
+    if (!isResearchApiProvider(body.provider)) {
+      return json({ error: "provider must be one of: openalex, semantic_scholar" }, 400);
+    }
+    const apiKey = body.apiKey?.trim() ?? "";
+    if (apiKey.length < 16) {
+      return json({ error: "apiKey is invalid" }, 400);
+    }
+
+    try {
+      const encrypted = await Encrypt.encrypt(requireEncryptionKey(c.env), apiKey);
+      const hint = `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}`;
+      await Db.upsertUserResearchApiKey(c.env.ALEXCLAW_DB, {
+        userId: user.id,
+        provider: body.provider,
+        encryptedKey: encrypted,
+        keyHint: hint
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return json({ error: message }, 500);
+    }
+
+    return json({ ok: true });
+  });
+
+  app.delete("/api/settings/research-keys", async (c) => {
+    const user = await Auth.resolveUser(c);
+    if (!user) {
+      return json({ error: "Unauthorized" }, 401);
+    }
+
+    const bodyRaw = await c.req.json().catch(() => ({}));
+    const body = bodyRaw as { provider?: string };
+    if (isResearchApiProvider(body.provider)) {
+      await Db.deleteUserResearchApiKey(c.env.ALEXCLAW_DB, {
+        userId: user.id,
+        provider: body.provider
+      });
+    } else {
+      await Db.deleteAllUserResearchApiKeys(c.env.ALEXCLAW_DB, user.id);
     }
     return json({ ok: true });
   });

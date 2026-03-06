@@ -45,10 +45,12 @@ export async function handleQueue(batch: QueueBatch, env: Env): Promise<void> {
           typeof payload.paperId !== "string" ||
           typeof payload.openalexId !== "string" ||
           typeof payload.doi !== "string" ||
+          typeof payload.userEmail !== "string" ||
           payload.runId.length === 0 ||
           payload.paperId.length === 0 ||
           payload.openalexId.length === 0 ||
-          payload.doi.length === 0
+          payload.doi.length === 0 ||
+          payload.userEmail.length === 0
         ) {
           message.ack();
           continue;

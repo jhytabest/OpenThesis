@@ -12,7 +12,9 @@ Production-oriented MVP for thesis-to-paper-graph using:
 - Google OAuth login + secure session cookie auth
 - Ownership checks on all thesis/run routes
 - Thesis intake and asynchronous run creation
-- Fully BYOK LLM runtime (OpenAI / OpenRouter / Gemini / Claude)
+- Fully BYOK runtime:
+  - LLM providers (OpenAI / OpenRouter / Gemini / Claude)
+  - Research providers (OpenAlex / Semantic Scholar)
 - Pipeline with:
   - Provider-agnostic structured JSON reasoning steps
   - OpenAlex search (Semantic Scholar fallback on OpenAlex quota/rate exhaustion)
@@ -112,9 +114,6 @@ wrangler secret put GOOGLE_CLIENT_ID
 wrangler secret put GOOGLE_CLIENT_SECRET
 wrangler secret put ENCRYPTION_KEY
 wrangler secret put INTERNAL_API_TOKEN
-wrangler secret put SEMANTIC_SCHOLAR_API_KEY
-wrangler secret put OPENALEX_API_KEY
-wrangler secret put UNPAYWALL_EMAIL
 ```
 
 2. Deploy (runs remote D1 migrations automatically, then deploys):
@@ -149,6 +148,9 @@ Settings:
 - `GET /api/settings/byok`
 - `PUT /api/settings/byok`
 - `DELETE /api/settings/byok`
+- `GET /api/settings/research-keys`
+- `PUT /api/settings/research-keys`
+- `DELETE /api/settings/research-keys`
 
 Core:
 

@@ -52,13 +52,20 @@ test("semantic scholar provider sanitizes query and filters fields of study", as
 
 test("semantic scholar provider throws when query is empty after sanitization", async () => {
   const provider = buildLiveSemanticScholarProvider(
-    {} as any,
+    { SEMANTIC_SCHOLAR_API_KEY: "ss-key" } as any,
     async <T>(): Promise<T> => ({ data: [] } as T)
   );
 
   await assert.rejects(
     () => provider.search("AND OR NOT", [], 10),
     /query is empty after sanitization/
+  );
+});
+
+test("semantic scholar provider requires API key in live mode", () => {
+  assert.throws(
+    () => buildLiveSemanticScholarProvider({} as any, async <T>(): Promise<T> => ({} as T)),
+    /SEMANTIC_SCHOLAR_API_KEY is required/
   );
 });
 

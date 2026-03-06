@@ -34,6 +34,17 @@ const ensureByokConfigured = async (db: D1Database, userId: string): Promise<boo
   return Boolean(credential);
 };
 
+const ensureResearchByokConfigured = async (
+  db: D1Database,
+  userId: string
+): Promise<{ ok: boolean; missing: string[] }> => {
+  const keys = await Db.listUserResearchApiKeys(db, userId);
+  const configured = new Set(keys.map((key) => key.provider));
+  const required: Array<"openalex" | "semantic_scholar"> = ["openalex", "semantic_scholar"];
+  const missing = required.filter((provider) => !configured.has(provider));
+  return { ok: missing.length === 0, missing };
+};
+
 export function registerProjectCoreRoutes(app: App): void {
   app.get("/api/projects", async (c) => {
     const user = await Auth.resolveUser(c);
@@ -134,6 +145,15 @@ export function registerProjectCoreRoutes(app: App): void {
       return json(
         {
           error: "BYOK is required before creating projects. Configure a provider key in Account settings."
+        },
+        400
+      );
+    }
+    const researchByok = await ensureResearchByokConfigured(c.env.ALEXCLAW_DB, user.id);
+    if (!researchByok.ok) {
+      return json(
+        {
+          error: `Research BYOK is required before creating projects. Missing: ${researchByok.missing.join(", ")}.`
         },
         400
       );
@@ -284,6 +304,15 @@ export function registerProjectCoreRoutes(app: App): void {
     const byokConfigured = await ensureByokConfigured(c.env.ALEXCLAW_DB, user.id);
     if (!byokConfigured) {
       return json({ error: "BYOK is required before creating runs. Configure Account settings first." }, 400);
+    }
+    const researchByok = await ensureResearchByokConfigured(c.env.ALEXCLAW_DB, user.id);
+    if (!researchByok.ok) {
+      return json(
+        {
+          error: `Research BYOK is required before creating runs. Missing: ${researchByok.missing.join(", ")}.`
+        },
+        400
+      );
     }
 
     const runDraft = await WorkspaceService.createRunWithFrozenSnapshots({

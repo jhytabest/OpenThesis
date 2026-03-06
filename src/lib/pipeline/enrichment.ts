@@ -8,7 +8,10 @@ export async function processUnpaywallEnrichmentMessage(
   env: Env,
   message: UnpaywallEnrichmentMessage
 ): Promise<void> {
-  const unpaywall = buildLiveUnpaywallProvider(env);
+  const unpaywall = buildLiveUnpaywallProvider({
+    ...env,
+    UNPAYWALL_EMAIL: message.userEmail
+  });
   const access = await withRetries(
     () => unpaywall.lookupByDoi(message.doi),
     2,
